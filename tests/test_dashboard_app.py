@@ -92,6 +92,23 @@ def test_autopilot_endpoints_are_available(monkeypatch):
     assert client.post("/api/autopilot/run-now").json()["status"] == "completed"
 
 
+def test_progress_endpoints_are_available(monkeypatch):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+
+    class StubProgressReporter:
+        def weekly(self):
+            return {"overall_status": "improving", "score": 82}
+
+        def history(self, weeks=8):
+            return {"weeks": [{"overall_status": "improving", "score": 82}]}
+
+    monkeypatch.setattr(dashboard_app, "progress_reporter", StubProgressReporter())
+    client = TestClient(app)
+
+    assert client.get("/api/progress/weekly").json()["score"] == 82
+    assert client.get("/api/progress/history").json()["weeks"][0]["overall_status"] == "improving"
+
+
 def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
     storage = DashboardStorage(

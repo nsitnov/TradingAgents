@@ -94,7 +94,10 @@ def test_weekly_report_calculates_net_gross_and_trade_summary(tmp_path):
     assert report["trades"]["buys"] == 1
     assert report["trades"]["buy_notional"] == 1_000
     assert report["positions"][0]["ticker"] == "SPY"
+    assert "progress" in report
+    assert "overall_status" in report["progress"]
     assert "+$500.00" in render_report_text(report)
+    assert "Progress Scorecard" in render_report_text(report)
 
 
 def test_send_report_email_posts_resend_payload(monkeypatch):
@@ -165,6 +168,8 @@ def test_send_report_email_posts_resend_payload(monkeypatch):
     )
     assert posted["json"]["to"] == ["me@example.com"]
     assert posted["json"]["subject"].startswith("Weekly:")
+    assert "Progress Scorecard" in posted["json"]["text"]
+    assert "Progress Scorecard" in posted["json"]["html"]
 
 
 def test_send_report_email_raises_on_resend_error(monkeypatch):

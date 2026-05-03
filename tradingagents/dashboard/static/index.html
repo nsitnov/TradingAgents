@@ -208,7 +208,7 @@
       function App() {
         const today = new Date().toISOString().slice(0, 10);
         const defaultBacktestStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const [tab, setTab] = useState("autopilot");
+        const [tab, setTab] = useState("progress");
         const [form, setForm] = useState({
           ticker: "SPY",
           analysis_date: today,
@@ -234,6 +234,8 @@
         const [readinessMetrics, setReadinessMetrics] = useState(null);
         const [stabilityGate, setStabilityGate] = useState(null);
         const [postmortems, setPostmortems] = useState({ summary: {}, postmortems: [] });
+        const [progressWeekly, setProgressWeekly] = useState(null);
+        const [progressHistory, setProgressHistory] = useState([]);
         const [backtestForm, setBacktestForm] = useState({
           tickers: "SPY",
           start: defaultBacktestStart,
@@ -294,6 +296,7 @@
           refreshAutopilot();
           refreshCosts();
           refreshReadiness();
+          refreshProgress();
           refreshBacktests();
           refreshAgentReplays();
           refreshScanner();
@@ -368,6 +371,7 @@
             refreshScanner();
             refreshPortfolio();
             refreshReadiness();
+            refreshProgress();
           } finally {
             setAutopilotLoading(false);
           }
@@ -387,6 +391,15 @@
           if (metricsRes.ok) setReadinessMetrics(await metricsRes.json());
           if (gateRes.ok) setStabilityGate(await gateRes.json());
           if (postmortemsRes.ok) setPostmortems(await postmortemsRes.json());
+        }
+
+        async function refreshProgress() {
+          const [weeklyRes, historyRes] = await Promise.all([
+            fetch("/api/progress/weekly"),
+            fetch("/api/progress/history")
+          ]);
+          if (weeklyRes.ok) setProgressWeekly(await weeklyRes.json());
+          if (historyRes.ok) setProgressHistory((await historyRes.json()).weeks || []);
         }
 
         async function refreshBacktests() {
@@ -425,6 +438,7 @@
             }
             setSelectedBacktest({ result: body });
             refreshBacktests();
+            refreshProgress();
           } finally {
             setBacktestLoading(false);
           }
@@ -469,6 +483,7 @@
             }
             setSelectedAgentReplay(body);
             refreshAgentReplays();
+            refreshProgress();
           } finally {
             setAgentReplayLoading(false);
           }
@@ -585,6 +600,7 @@
             }
             refreshScanner();
             refreshPortfolio();
+            refreshProgress();
           } finally {
             setScannerLoading(false);
           }
@@ -650,6 +666,7 @@
               <h1>TradingAgents Live Dashboard</h1>
               <div className="tabs">
                 {[
+                  ["progress", "Progress"],
                   ["autopilot", "Autopilot"],
                   ["live", "Live Runs"],
                   ["portfolio", "Paper Portfolio"],
@@ -666,6 +683,7 @@
                 <span className={statusClass(run?.status)}>{run?.status || "idle"}</span>
               </div>
             </header>
+            {tab === "progress" && <ProgressDashboard weekly={progressWeekly} history={progressHistory} refresh={refreshProgress} />}
             {tab === "autopilot" && <AutopilotDashboard config={autopilotConfig} status={autopilotStatus} jobs={autopilotJobs} loading={autopilotLoading} error={autopilotError} saveConfig={saveAutopilotConfig} runNow={runAutopilotNow} refresh={refreshAutopilot} scannerCalibration={scannerCalibration} readiness={stabilityGate} />}
             {tab === "live" && (
               <main>
@@ -819,6 +837,92 @@
               ))}
             </div>
           </section>
+        );
+      }
+
+      function ProgressDashboard({ weekly, history, refresh }) {
+        const statuses = weekly?.statuses || {};
+        const portfolio = weekly?.portfolio?.performance || {};
+        const autopilot = weekly?.autopilot || {};
+        const scanner = weekly?.scanner || {};
+        const risk = weekly?.risk?.gate || {};
+        const costs = weekly?.costs || {};
+        const alpha = weekly?.backtests?.benchmark_alpha || {};
+        const statusTone = (status) => status === "improving" ? "pos" : status === "degrading" ? "neg" : "muted";
+        const pct = (value) => `${((Number(value || 0)) * 100).toFixed(2)}%`;
+        return (
+          <main className="wide-main">
+            <section className="content">
+              <section className="panel">
+                <div className="toolbar">
+                  <div>
+                    <h2>Weekly Progress Scorecard</h2>
+                    <div className="muted">{weekly?.period?.label || "No weekly progress loaded yet."}</div>
+                  </div>
+                  <button onClick={refresh}>Refresh</button>
+                </div>
+                <section className="grid-3">
+                  <div className="metric"><span>Overall</span><strong className={statusTone(weekly?.overall_status)}>{weekly?.overall_status || "--"}</strong></div>
+                  <div className="metric"><span>Score</span><strong>{weekly?.score ?? 0}/100</strong></div>
+                  <div className="metric"><span>Live Trading</span><strong className="neg">{risk.live_trading_allowed ? "allowed" : "disabled"}</strong></div>
+                  <div className="metric"><span>Total Return</span><strong className={(portfolio.total_return_pct || 0) >= 0 ? "pos" : "neg"}>{pct(portfolio.total_return_pct)}</strong></div>
+                  <div className="metric"><span>Total P&L</span><strong className={(portfolio.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(portfolio.total_pnl)}</strong></div>
+                  <div className="metric"><span>Max Drawdown</span><strong className={(portfolio.max_drawdown || 0) >= -0.1 ? "" : "neg"}>{pct(portfolio.max_drawdown)}</strong></div>
+                </section>
+              </section>
+
+              <section className="grid-2">
+                <section className="panel">
+                  <h2>Status Checks</h2>
+                  <table>
+                    <thead><tr><th>Area</th><th>Status</th><th>Signal</th></tr></thead>
+                    <tbody>
+                      <tr><td>Profitability</td><td className={statusTone(statuses.profitability)}>{statuses.profitability || "--"}</td><td>SPY alpha {alpha.SPY == null ? "--" : pct(alpha.SPY)}, QQQ alpha {alpha.QQQ == null ? "--" : pct(alpha.QQQ)}</td></tr>
+                      <tr><td>Autopilot</td><td className={statusTone(statuses.autopilot)}>{statuses.autopilot || "--"}</td><td>{autopilot.jobs || 0} jobs, {autopilot.errors || 0} errors, {autopilot.paper_orders || 0} paper orders</td></tr>
+                      <tr><td>Scanner</td><td className={statusTone(statuses.scanner)}>{statuses.scanner || "--"}</td><td>{scanner.orders || 0} orders, profit factor {scanner.profit_factor == null ? "--" : number(scanner.profit_factor)}</td></tr>
+                      <tr><td>Risk</td><td className={statusTone(statuses.risk)}>{statuses.risk || "--"}</td><td>Drawdown {pct(risk.max_drawdown)}, rejection rate {pct(risk.risk_rejection_rate)}</td></tr>
+                      <tr><td>Cost</td><td className={statusTone(statuses.cost)}>{statuses.cost || "--"}</td><td>{money(costs.total_usd)} / {money(costs.budget_usd)} weekly budget</td></tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                <section className="panel">
+                  <h2>Recommendations</h2>
+                  <div className="agent-list">
+                    {(weekly?.recommendations || []).length === 0 && <p className="muted">No recommendations loaded.</p>}
+                    {(weekly?.recommendations || []).map((item, index) => (
+                      <div className="agent" key={index}><span>{item}</span></div>
+                    ))}
+                  </div>
+                </section>
+              </section>
+
+              <section className="panel">
+                <h2>Weekly History</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Week</th><th>Status</th><th>Score</th><th>Return</th><th>P&L</th><th>Drawdown</th><th>Autopilot Jobs</th><th>Orders</th><th>Cost</th></tr></thead>
+                    <tbody>
+                      {history.length === 0 && <tr><td colSpan="9" className="muted">No weekly history yet.</td></tr>}
+                      {history.map((row, index) => (
+                        <tr key={`${row.period?.start}-${index}`}>
+                          <td>{(row.period?.start || "").slice(0, 10)}</td>
+                          <td className={statusTone(row.overall_status)}>{row.overall_status}</td>
+                          <td>{row.score}/100</td>
+                          <td className={(row.total_return_pct || 0) >= 0 ? "pos" : "neg"}>{pct(row.total_return_pct)}</td>
+                          <td className={(row.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(row.total_pnl)}</td>
+                          <td>{pct(row.max_drawdown)}</td>
+                          <td>{row.autopilot_jobs || 0}</td>
+                          <td>{row.orders || 0}</td>
+                          <td>{money(row.openai_cost_usd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
+          </main>
         );
       }
 

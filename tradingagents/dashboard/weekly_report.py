@@ -14,6 +14,7 @@ import requests
 from dotenv import load_dotenv
 
 from tradingagents.dashboard.ledger import PaperLedger
+from tradingagents.dashboard.progress import ProgressReporter
 from tradingagents.dashboard.storage import DashboardStorage
 
 
@@ -114,6 +115,9 @@ def build_weekly_report(
         },
         "trades": _trade_summary(trades_in_period),
         "positions": _position_summary(end_snapshot),
+        "progress": ProgressReporter(storage, timezone_name=timezone_name).weekly(
+            as_of=period.end
+        ),
         "has_data": bool(start_snapshot and end_snapshot),
     }
 
@@ -122,6 +126,8 @@ def render_report_text(report: Dict[str, Any]) -> str:
     portfolio = report["portfolio"]
     trades = report["trades"]
     positions = report["positions"]
+    progress = report.get("progress", {})
+    progress_statuses = progress.get("statuses", {})
     lines = [
         f"TradingAgents weekly portfolio report: {report['period']['label']}",
         "",
@@ -139,8 +145,26 @@ def render_report_text(report: Dict[str, Any]) -> str:
         f"Buy notional: {_money(trades['buy_notional'])}",
         f"Sell notional: {_money(trades['sell_notional'])}",
         "",
-        "Open positions:",
+        "Progress Scorecard:",
+        f"Overall: {progress.get('overall_status', 'unknown')} ({progress.get('score', 0)}/100)",
+        f"Profitability: {progress_statuses.get('profitability', 'unknown')}",
+        f"Autopilot: {progress_statuses.get('autopilot', 'unknown')}",
+        f"Scanner: {progress_statuses.get('scanner', 'unknown')}",
+        f"Risk: {progress_statuses.get('risk', 'unknown')}",
+        f"OpenAI cost: {_money(float(progress.get('costs', {}).get('total_usd', 0.0)))}",
+        "Recommendations:",
     ]
+    recommendations = progress.get("recommendations", [])
+    if recommendations:
+        lines.extend(f"- {item}" for item in recommendations)
+    else:
+        lines.append("- No progress recommendations available")
+    lines.extend(
+        [
+            "",
+            "Open positions:",
+        ]
+    )
     if positions:
         for position in positions:
             lines.append(
@@ -167,6 +191,8 @@ def render_report_html(report: Dict[str, Any]) -> str:
     portfolio = report["portfolio"]
     trades = report["trades"]
     positions = report["positions"]
+    progress = report.get("progress", {})
+    progress_statuses = progress.get("statuses", {})
     pnl_color = "#116329" if portfolio["net_pnl"] >= 0 else "#b42318"
     position_rows = "\n".join(
         "<tr><td>{ticker}</td><td>{quantity:.4f}</td><td>{market_value}</td><td>{unrealized}</td></tr>".format(
@@ -179,6 +205,11 @@ def render_report_html(report: Dict[str, Any]) -> str:
     )
     if not position_rows:
         position_rows = '<tr><td colspan="4">No open positions</td></tr>'
+    recommendation_rows = "".join(
+        f"<li>{html.escape(item)}</li>" for item in progress.get("recommendations", [])
+    )
+    if not recommendation_rows:
+        recommendation_rows = "<li>No progress recommendations available</li>"
     no_data = ""
     if not report["has_data"]:
         no_data = (
@@ -206,6 +237,16 @@ def render_report_html(report: Dict[str, Any]) -> str:
     <h2 style="font-size: 16px;">Trades</h2>
     <p>{trades["count"]} total, {trades["buys"]} buys, {trades["sells"]} sells, {trades["holds"]} holds</p>
     <p>Buy notional: {html.escape(_money(trades["buy_notional"]))}<br>Sell notional: {html.escape(_money(trades["sell_notional"]))}</p>
+    <h2 style="font-size: 16px;">Progress Scorecard</h2>
+    <table cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
+      <tr><td>Overall</td><td><strong>{html.escape(str(progress.get("overall_status", "unknown")))} ({int(progress.get("score", 0))}/100)</strong></td></tr>
+      <tr><td>Profitability</td><td>{html.escape(str(progress_statuses.get("profitability", "unknown")))}</td></tr>
+      <tr><td>Autopilot</td><td>{html.escape(str(progress_statuses.get("autopilot", "unknown")))}</td></tr>
+      <tr><td>Scanner</td><td>{html.escape(str(progress_statuses.get("scanner", "unknown")))}</td></tr>
+      <tr><td>Risk</td><td>{html.escape(str(progress_statuses.get("risk", "unknown")))}</td></tr>
+      <tr><td>OpenAI cost</td><td>{html.escape(_money(float(progress.get("costs", {}).get("total_usd", 0.0))))}</td></tr>
+    </table>
+    <ul>{recommendation_rows}</ul>
     <h2 style="font-size: 16px;">Open positions</h2>
     <table cellpadding="6" cellspacing="0" style="border-collapse: collapse; border: 1px solid #e5e7eb;">
       <tr><th align="left">Ticker</th><th align="right">Quantity</th><th align="right">Market value</th><th align="right">Unrealized P&amp;L</th></tr>

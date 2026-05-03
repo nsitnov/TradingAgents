@@ -22,6 +22,7 @@ from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
+from tradingagents.dashboard.progress import ProgressReporter
 from tradingagents.dashboard.readiness import ReadinessReporter
 from tradingagents.dashboard.scanner import (
     CrossMarketScanner,
@@ -55,6 +56,11 @@ scanner_confluence = ScannerConfluenceReviewer(storage=storage)
 scanner_executor = ScannerPaperExecutor(storage=storage, ledger=ledger)
 scanner_calibration = ScannerCalibrationReporter(storage=storage)
 readiness_reporter = ReadinessReporter(storage=storage)
+progress_reporter = ProgressReporter(
+    storage=storage,
+    scanner_calibration=scanner_calibration,
+    readiness=readiness_reporter,
+)
 autopilot_service = AutopilotService(
     storage=storage,
     ledger=ledger,
@@ -358,6 +364,16 @@ def readiness_stability_gate():
 @app.get("/api/readiness/postmortems")
 def readiness_postmortems(limit: int = Query(default=100, ge=1, le=500)):
     return readiness_reporter.trade_postmortems(limit=limit)
+
+
+@app.get("/api/progress/weekly")
+def weekly_progress():
+    return progress_reporter.weekly()
+
+
+@app.get("/api/progress/history")
+def progress_history(weeks: int = Query(default=8, ge=1, le=52)):
+    return progress_reporter.history(weeks=weeks)
 
 
 @app.get("/api/autopilot/config")
