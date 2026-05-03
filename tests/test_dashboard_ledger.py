@@ -17,6 +17,17 @@ def test_buy_decision_invests_twenty_percent_of_cash(tmp_path):
     assert snapshot["trades"][0]["action"] == "buy"
 
 
+def test_preview_decision_does_not_mutate_ledger(tmp_path):
+    ledger = PaperLedger(tmp_path / "ledger.json", price_provider=lambda _: 100.0)
+
+    preview = ledger.preview_decision(ticker="SPY", decision="Buy")
+
+    assert preview["action"] == "buy"
+    assert preview["quantity"] == 200
+    assert preview["notional"] == 20_000
+    assert ledger.snapshot()["positions"] == {}
+
+
 def test_sell_decision_closes_position_and_realizes_pnl(tmp_path):
     prices = iter([100.0, 110.0])
     ledger = PaperLedger(tmp_path / "ledger.json", price_provider=lambda _: next(prices))

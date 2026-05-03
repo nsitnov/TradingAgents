@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from cli.main import classify_message_type
 from cli.stats_handler import StatsCallbackHandler
 from tradingagents.dashboard.ledger import PaperLedger
+from tradingagents.dashboard.oms import OrderIntent, PaperOrderService
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.checkpointer import clear_checkpoint, get_checkpointer, thread_id
@@ -322,6 +323,12 @@ class RunStore:
             "performance": self._portfolio_performance(history),
         }
 
+    def approve_order(self, order_id: str) -> Dict[str, Any]:
+        return self._order_service().approve_order(order_id)
+
+    def reject_order(self, order_id: str, reason: str = "Rejected manually") -> Dict[str, Any]:
+        return self._order_service().reject_order(order_id, reason)
+
     def _run_worker(self, run_id: str) -> None:
         load_dotenv()
         load_dotenv(".env.enterprise", override=False)
@@ -545,13 +552,20 @@ class RunStore:
             self.storage.upsert_run(run.snapshot(), source=run.source)
 
         try:
-            portfolio = self.ledger.apply_decision(
-                ticker=run.request.ticker,
-                decision=decision,
-                trade_date=run.request.analysis_date.isoformat(),
-                run_id=run.run_id,
+            order_result = self._order_service().submit_decision(
+                OrderIntent(
+                    run_id=run.run_id,
+                    ticker=run.request.ticker,
+                    decision=decision,
+                    trade_date=run.request.analysis_date.isoformat(),
+                    source=run.source,
+                )
             )
+            portfolio = order_result["portfolio"]
             with self._lock:
+                self._emit_locked(run, "order_update", order_result["order"])
+                if order_result.get("risk"):
+                    self._emit_locked(run, "risk_decision", order_result["risk"])
                 self._emit_locked(run, "position_update", portfolio)
                 self._emit_locked(run, "pnl_update", portfolio)
         except Exception as exc:
@@ -563,6 +577,9 @@ class RunStore:
             self.storage.write_complete_analysis(run.snapshot(), run.accumulator.report_sections)
             self.storage.upsert_run(run.snapshot(), source=run.source)
             self._release_run_lock(run)
+
+    def _order_service(self) -> PaperOrderService:
+        return PaperOrderService(ledger=self.ledger, storage=self.storage)
 
     def _fail_or_cancel(self, run: RunRecord, error: str, cancelled: bool) -> None:
         with self._lock:

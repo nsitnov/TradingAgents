@@ -58,6 +58,17 @@ class PaperLedger:
             self._recalculate_totals(ledger)
             return deepcopy(ledger)
 
+    def preview_decision(self, *, ticker: str, decision: str) -> Dict[str, Any]:
+        ticker = ticker.upper().strip()
+        decision = (decision or "Hold").strip()
+        with self._lock:
+            ledger = self._load()
+            self._recalculate_totals(ledger)
+            price = self._price_provider(ticker)
+            if price <= 0:
+                raise ValueError(f"Could not resolve a positive price for {ticker}")
+            return deepcopy(self._preview_decision(ledger, ticker, decision, price))
+
     def sync_to_storage(self) -> None:
         if not self.storage:
             return
@@ -84,6 +95,7 @@ class PaperLedger:
             price = self._price_provider(ticker)
             if price <= 0:
                 raise ValueError(f"Could not resolve a positive price for {ticker}")
+            preview = self._preview_decision(ledger, ticker, decision, price)
 
             position = ledger["positions"].setdefault(
                 ticker,
@@ -97,23 +109,10 @@ class PaperLedger:
                 },
             )
 
-            action = "hold"
-            quantity = 0.0
+            action = preview["action"]
+            quantity = float(preview["quantity"])
             cash_before = float(ledger["cash"])
             current_qty = float(position["quantity"])
-
-            if decision == "Buy":
-                quantity = (cash_before * 0.20) / price
-                action = "buy"
-            elif decision == "Overweight":
-                quantity = (cash_before * 0.10) / price
-                action = "buy"
-            elif decision == "Underweight" and current_qty > 0:
-                quantity = current_qty * 0.50
-                action = "sell"
-            elif decision == "Sell" and current_qty > 0:
-                quantity = current_qty
-                action = "sell"
 
             if action == "buy" and quantity > 0:
                 cost = quantity * price
@@ -181,6 +180,53 @@ class PaperLedger:
         avg_cost = float(position.get("avg_cost", 0.0))
         position["market_value"] = qty * price
         position["unrealized_pnl"] = (price - avg_cost) * qty
+
+    def _preview_decision(
+        self,
+        ledger: Dict[str, Any],
+        ticker: str,
+        decision: str,
+        price: float,
+    ) -> Dict[str, Any]:
+        position = ledger.get("positions", {}).get(ticker, {})
+        cash = float(ledger.get("cash", 0.0))
+        current_qty = float(position.get("quantity", 0.0))
+        action = "hold"
+        quantity = 0.0
+
+        if decision == "Buy":
+            quantity = (cash * 0.20) / price
+            action = "buy"
+        elif decision == "Overweight":
+            quantity = (cash * 0.10) / price
+            action = "buy"
+        elif decision == "Underweight" and current_qty > 0:
+            quantity = current_qty * 0.50
+            action = "sell"
+        elif decision == "Sell" and current_qty > 0:
+            quantity = current_qty
+            action = "sell"
+
+        notional = quantity * price
+        current_market_value = float(position.get("market_value", 0.0))
+        projected_market_value = current_market_value
+        if action == "buy":
+            projected_market_value += notional
+        elif action == "sell":
+            projected_market_value = max(0.0, current_market_value - notional)
+
+        return {
+            "ticker": ticker,
+            "decision": decision,
+            "action": action,
+            "quantity": quantity,
+            "price": price,
+            "notional": notional,
+            "cash": cash,
+            "equity": float(ledger.get("equity", cash)),
+            "current_position_market_value": current_market_value,
+            "projected_position_market_value": projected_market_value,
+        }
 
     def _recalculate_totals(self, ledger: Dict[str, Any]) -> None:
         total_market_value = 0.0

@@ -132,6 +132,61 @@ class DashboardStorage:
                     fetched_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS orders (
+                    order_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    ticker TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    quantity REAL NOT NULL,
+                    estimated_price REAL NOT NULL,
+                    estimated_notional REAL NOT NULL,
+                    projected_position_market_value REAL NOT NULL,
+                    mode TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL UNIQUE,
+                    reason TEXT,
+                    trade_date TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    order_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS fills (
+                    fill_id TEXT PRIMARY KEY,
+                    order_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    ticker TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    quantity REAL NOT NULL,
+                    price REAL NOT NULL,
+                    notional REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    fill_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS risk_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT,
+                    checks_json TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    run_id TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -438,6 +493,234 @@ class DashboardStorage:
             for row in rows
         ]
 
+    def upsert_order(self, order: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO orders (
+                    order_id, run_id, ticker, decision, action, status, quantity,
+                    estimated_price, estimated_notional, projected_position_market_value,
+                    mode, idempotency_key, reason, trade_date, source, created_at,
+                    updated_at, order_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(order_id) DO UPDATE SET
+                    status=excluded.status,
+                    quantity=excluded.quantity,
+                    estimated_price=excluded.estimated_price,
+                    estimated_notional=excluded.estimated_notional,
+                    projected_position_market_value=excluded.projected_position_market_value,
+                    reason=excluded.reason,
+                    updated_at=excluded.updated_at,
+                    order_json=excluded.order_json
+                """,
+                (
+                    order["order_id"],
+                    order.get("run_id", ""),
+                    order.get("ticker", ""),
+                    order.get("decision", ""),
+                    order.get("action", ""),
+                    order.get("status", ""),
+                    float(order.get("quantity", 0.0)),
+                    float(order.get("estimated_price", 0.0)),
+                    float(order.get("estimated_notional", 0.0)),
+                    float(order.get("projected_position_market_value", 0.0)),
+                    order.get("mode", ""),
+                    order.get("idempotency_key", ""),
+                    order.get("reason") or None,
+                    order.get("trade_date", ""),
+                    order.get("source", "agent"),
+                    order.get("created_at") or now_iso(),
+                    order.get("updated_at") or now_iso(),
+                    _json(order),
+                ),
+            )
+
+    def orders(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM orders ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._row_to_order(row) for row in rows]
+
+    def order_detail(self, order_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM orders WHERE order_id = ?", (order_id,)
+            ).fetchone()
+        return self._row_to_order(row) if row else None
+
+    def order_by_idempotency_key(self, idempotency_key: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM orders WHERE idempotency_key = ?", (idempotency_key,)
+            ).fetchone()
+        return self._row_to_order(row) if row else None
+
+    def count_orders_on_date(
+        self,
+        order_date: str,
+        *,
+        actions: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
+    ) -> int:
+        clauses = ["substr(created_at, 1, 10) = ?"]
+        params: List[Any] = [order_date]
+        if actions:
+            clauses.append(f"action IN ({','.join('?' for _ in actions)})")
+            params.extend(actions)
+        if statuses:
+            clauses.append(f"status IN ({','.join('?' for _ in statuses)})")
+            params.extend(statuses)
+        query = f"SELECT COUNT(*) AS count FROM orders WHERE {' AND '.join(clauses)}"
+        with self._lock, self._connect() as conn:
+            row = conn.execute(query, params).fetchone()
+        return int(row["count"] if row else 0)
+
+    def portfolio_pnl_since(self, start_date: str) -> float:
+        with self._lock, self._connect() as conn:
+            first = conn.execute(
+                """
+                SELECT equity FROM portfolio_snapshots
+                WHERE substr(created_at, 1, 10) >= ?
+                ORDER BY created_at ASC
+                LIMIT 1
+                """,
+                (start_date,),
+            ).fetchone()
+            latest = conn.execute(
+                """
+                SELECT equity FROM portfolio_snapshots
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not first or not latest:
+            return 0.0
+        return float(latest["equity"]) - float(first["equity"])
+
+    def insert_fill(self, fill: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO fills
+                (fill_id, order_id, run_id, ticker, action, quantity, price, notional, created_at, fill_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fill["fill_id"],
+                    fill.get("order_id", ""),
+                    fill.get("run_id", ""),
+                    fill.get("ticker", ""),
+                    fill.get("action", ""),
+                    float(fill.get("quantity", 0.0)),
+                    float(fill.get("price", 0.0)),
+                    float(fill.get("notional", 0.0)),
+                    fill.get("created_at") or now_iso(),
+                    _json(fill),
+                ),
+            )
+
+    def fills(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT fill_json FROM fills ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_loads(row["fill_json"], {}) for row in rows]
+
+    def insert_risk_decision(
+        self, order_id: str, run_id: str, decision: Dict[str, Any]
+    ) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO risk_decisions
+                (order_id, run_id, status, reason, checks_json, decision_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_id,
+                    run_id,
+                    decision.get("status", ""),
+                    decision.get("reason") or None,
+                    _json(decision.get("checks", [])),
+                    _json(decision),
+                    now_iso(),
+                ),
+            )
+
+    def risk_decisions(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM risk_decisions
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "order_id": row["order_id"],
+                "run_id": row["run_id"],
+                "status": row["status"],
+                "reason": row["reason"],
+                "checks": _loads(row["checks_json"], []),
+                "decision": _loads(row["decision_json"], {}),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def insert_audit_event(
+        self,
+        event_type: str,
+        entity_type: str,
+        entity_id: str,
+        run_id: Optional[str],
+        payload: Dict[str, Any],
+    ) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO audit_events
+                (event_type, entity_type, entity_id, run_id, payload_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_type,
+                    entity_type,
+                    entity_id,
+                    run_id,
+                    _json(payload),
+                    now_iso(),
+                ),
+            )
+
+    def audit_events(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM audit_events
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "event_type": row["event_type"],
+                "entity_type": row["entity_type"],
+                "entity_id": row["entity_id"],
+                "run_id": row["run_id"],
+                "payload": _loads(row["payload_json"], {}),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],
@@ -450,6 +733,33 @@ class DashboardStorage:
             "error": row["error"],
             "source": row["source"],
         }
+
+    def _row_to_order(self, row: sqlite3.Row) -> Dict[str, Any]:
+        order = _loads(row["order_json"], {})
+        order.update(
+            {
+                "order_id": row["order_id"],
+                "run_id": row["run_id"],
+                "ticker": row["ticker"],
+                "decision": row["decision"],
+                "action": row["action"],
+                "status": row["status"],
+                "quantity": row["quantity"],
+                "estimated_price": row["estimated_price"],
+                "estimated_notional": row["estimated_notional"],
+                "projected_position_market_value": row[
+                    "projected_position_market_value"
+                ],
+                "mode": row["mode"],
+                "idempotency_key": row["idempotency_key"],
+                "reason": row["reason"] or "",
+                "trade_date": row["trade_date"],
+                "source": row["source"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+        return order
 
     def _analysis_dir(self, analysis_date: str, ticker: str, run_id: str) -> Path:
         safe_ticker = "".join(ch for ch in ticker.upper() if ch.isalnum() or ch in ".-_")

@@ -17,6 +17,7 @@ from tradingagents.dashboard.automation import (
 from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
+from tradingagents.dashboard.oms import RiskConfig
 from tradingagents.dashboard.storage import DashboardStorage
 
 
@@ -139,6 +140,48 @@ def portfolio_trades():
 @app.get("/api/portfolio/performance")
 def portfolio_performance():
     return store.portfolio_history()["performance"]
+
+
+@app.get("/api/orders")
+def orders(limit: int = Query(default=100, ge=1, le=500)):
+    return {"orders": storage.orders(limit=limit)}
+
+
+@app.get("/api/orders/fills")
+def order_fills(limit: int = Query(default=100, ge=1, le=500)):
+    return {"fills": storage.fills(limit=limit)}
+
+
+@app.post("/api/orders/{order_id}/approve")
+def approve_order(order_id: str):
+    try:
+        return store.approve_order(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/orders/{order_id}/reject")
+def reject_order(order_id: str, payload: dict | None = None):
+    try:
+        reason = (payload or {}).get("reason") or "Rejected manually"
+        return store.reject_order(order_id, reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/risk/config")
+def risk_config():
+    return RiskConfig.from_env().as_dict()
+
+
+@app.get("/api/risk/decisions")
+def risk_decisions(limit: int = Query(default=100, ge=1, le=500)):
+    return {"risk_decisions": storage.risk_decisions(limit=limit)}
+
+
+@app.get("/api/audit/events")
+def audit_events(limit: int = Query(default=100, ge=1, le=500)):
+    return {"audit_events": storage.audit_events(limit=limit)}
 
 
 @app.get("/api/automation/config")

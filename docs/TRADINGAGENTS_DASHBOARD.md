@@ -218,6 +218,50 @@ Dashboard tab `Paper Portfolio` показва:
 - позиции по тикер
 - trade ledger
 
+## Paper OMS и hard risk gates
+
+Agent decision вече не пише директно trade в ledger-а. Backend-ът създава `OrderIntent`, минава през deterministic risk gates и чак след това Paper OMS изпълнява paper order-а.
+
+Това пази invariant-а: **няма live broker path в текущата версия**.
+
+Поддържани trading modes:
+
+```bash
+TRADINGAGENTS_TRADING_MODE=PAPER          # default: risk gate + auto paper execution
+TRADINGAGENTS_TRADING_MODE=DEMO           # risk gate + log only, без ledger mutation
+TRADINGAGENTS_TRADING_MODE=LIVE_DISABLED  # execution blocked; използва се като safety stop
+```
+
+Risk env променливи:
+
+```bash
+TRADINGAGENTS_REQUIRE_ORDER_APPROVAL=false
+TRADINGAGENTS_MAX_POSITION_PCT=0.25
+TRADINGAGENTS_MAX_TRADE_NOTIONAL=25000
+TRADINGAGENTS_MAX_DAILY_TRADES=20
+TRADINGAGENTS_DAILY_LOSS_LIMIT=5000
+TRADINGAGENTS_FORBIDDEN_TICKERS=""
+```
+
+SQLite вече пази:
+
+- orders
+- fills
+- risk decisions
+- audit events
+
+Основни API endpoints:
+
+```text
+GET /api/orders
+GET /api/orders/fills
+POST /api/orders/{order_id}/approve
+POST /api/orders/{order_id}/reject
+GET /api/risk/config
+GET /api/risk/decisions
+GET /api/audit/events
+```
+
 ## Daily Automation
 
 Automation config:
@@ -364,6 +408,18 @@ GET /api/portfolio
 GET /api/portfolio/history
 GET /api/portfolio/trades
 GET /api/portfolio/performance
+```
+
+Orders / Risk / Audit:
+
+```text
+GET /api/orders
+GET /api/orders/fills
+POST /api/orders/{order_id}/approve
+POST /api/orders/{order_id}/reject
+GET /api/risk/config
+GET /api/risk/decisions
+GET /api/audit/events
 ```
 
 Automation:
