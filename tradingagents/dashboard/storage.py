@@ -261,6 +261,20 @@ class DashboardStorage:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS scanner_confluence_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    dislocation_id TEXT NOT NULL,
+                    signal_id TEXT NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    target_symbol TEXT NOT NULL,
+                    entity TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    total_score REAL NOT NULL,
+                    review_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -1074,6 +1088,62 @@ class DashboardStorage:
             ).fetchall()
         return [self._row_to_scanner_dislocation(row) for row in rows]
 
+    def scanner_dislocation_detail(self, dislocation_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM scanner_dislocations WHERE dislocation_id = ?",
+                (dislocation_id,),
+            ).fetchone()
+        return self._row_to_scanner_dislocation(row) if row else None
+
+    def upsert_scanner_confluence_review(self, review: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO scanner_confluence_reviews (
+                    review_id, dislocation_id, signal_id, event_id, target_symbol,
+                    entity, status, action, total_score, review_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(review_id) DO UPDATE SET
+                    dislocation_id=excluded.dislocation_id,
+                    signal_id=excluded.signal_id,
+                    event_id=excluded.event_id,
+                    target_symbol=excluded.target_symbol,
+                    entity=excluded.entity,
+                    status=excluded.status,
+                    action=excluded.action,
+                    total_score=excluded.total_score,
+                    review_json=excluded.review_json,
+                    created_at=excluded.created_at
+                """,
+                (
+                    review["review_id"],
+                    review["dislocation_id"],
+                    review["signal_id"],
+                    int(review["event_id"]),
+                    review.get("target_symbol", ""),
+                    review.get("entity", ""),
+                    review.get("status", ""),
+                    review.get("action", ""),
+                    float(review.get("total_score", 0.0)),
+                    _json(review),
+                    review.get("created_at") or now_iso(),
+                ),
+            )
+
+    def scanner_confluence_reviews(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM scanner_confluence_reviews
+                ORDER BY total_score DESC, created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_scanner_confluence_review(row) for row in rows]
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],
@@ -1203,6 +1273,24 @@ class DashboardStorage:
                 "lookback_days": row["lookback_days"],
                 "is_dislocated": bool(row["is_dislocated"]),
                 "direction": row["direction"],
+                "created_at": row["created_at"],
+            }
+        )
+        return item
+
+    def _row_to_scanner_confluence_review(self, row: sqlite3.Row) -> Dict[str, Any]:
+        item = _loads(row["review_json"], {})
+        item.update(
+            {
+                "review_id": row["review_id"],
+                "dislocation_id": row["dislocation_id"],
+                "signal_id": row["signal_id"],
+                "event_id": row["event_id"],
+                "target_symbol": row["target_symbol"],
+                "entity": row["entity"],
+                "status": row["status"],
+                "action": row["action"],
+                "total_score": row["total_score"],
                 "created_at": row["created_at"],
             }
         )

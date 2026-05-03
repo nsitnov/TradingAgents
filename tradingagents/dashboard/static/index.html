@@ -265,11 +265,13 @@
           url: "",
           lookback_days: 60,
           z_threshold: 1.5,
-          min_abs_gap_pct: 0.005
+          min_abs_gap_pct: 0.005,
+          min_total_score: 0.65
         });
         const [scannerSignals, setScannerSignals] = useState([]);
         const [scannerEvents, setScannerEvents] = useState([]);
         const [scannerDislocations, setScannerDislocations] = useState([]);
+        const [scannerConfluenceReviews, setScannerConfluenceReviews] = useState([]);
         const [scannerLoading, setScannerLoading] = useState(false);
         const [scannerError, setScannerError] = useState("");
         const [error, setError] = useState("");
@@ -416,14 +418,16 @@
         }
 
         async function refreshScanner() {
-          const [signalsRes, eventsRes, dislocationsRes] = await Promise.all([
+          const [signalsRes, eventsRes, dislocationsRes, confluenceRes] = await Promise.all([
             fetch("/api/scanner/signals"),
             fetch("/api/scanner/events"),
-            fetch("/api/scanner/dislocations")
+            fetch("/api/scanner/dislocations"),
+            fetch("/api/scanner/confluence/reviews")
           ]);
           if (signalsRes.ok) setScannerSignals((await signalsRes.json()).signals || []);
           if (eventsRes.ok) setScannerEvents((await eventsRes.json()).events || []);
           if (dislocationsRes.ok) setScannerDislocations((await dislocationsRes.json()).dislocations || []);
+          if (confluenceRes.ok) setScannerConfluenceReviews((await confluenceRes.json()).reviews || []);
         }
 
         async function ingestScannerEvent(event) {
@@ -463,6 +467,30 @@
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
               setScannerError(body.detail || "Could not detect dislocations");
+              return;
+            }
+            refreshScanner();
+          } finally {
+            setScannerLoading(false);
+          }
+        }
+
+        async function reviewScannerConfluence() {
+          setScannerError("");
+          setScannerLoading(true);
+          try {
+            const res = await fetch("/api/scanner/confluence/review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                min_z_score: Number(scannerForm.z_threshold || 1.5),
+                min_abs_gap_pct: Number(scannerForm.min_abs_gap_pct || 0.005),
+                min_total_score: Number(scannerForm.min_total_score || 0.65)
+              })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setScannerError(body.detail || "Could not review confluence");
               return;
             }
             refreshScanner();
@@ -565,7 +593,7 @@
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
             {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
-            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} refresh={refreshScanner} />}
+            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} refresh={refreshScanner} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -1009,7 +1037,8 @@
         );
       }
 
-      function ScannerDashboard({ form, setForm, signals, events, dislocations, loading, error, ingestEvent, detectDislocations, refresh }) {
+      function ScannerDashboard({ form, setForm, signals, events, dislocations, confluenceReviews, loading, error, ingestEvent, detectDislocations, reviewConfluence, refresh }) {
+        const paperCandidates = confluenceReviews.filter((item) => item.status === "paper_candidate");
         return (
           <main>
             <aside className="sidebar">
@@ -1036,8 +1065,14 @@
                   <div className="field"><label>Lookback days</label><input type="number" min="10" max="500" value={form.lookback_days} onChange={(e) => setForm({ ...form, lookback_days: e.target.value })} /></div>
                   <div className="field"><label>Z threshold</label><input type="number" min="0" max="10" step="0.1" value={form.z_threshold} onChange={(e) => setForm({ ...form, z_threshold: e.target.value })} /></div>
                 </div>
-                <div className="field"><label>Min gap pct</label><input type="number" min="0" max="1" step="0.001" value={form.min_abs_gap_pct} onChange={(e) => setForm({ ...form, min_abs_gap_pct: e.target.value })} /></div>
-                <button className="primary" type="button" disabled={loading || signals.length === 0} onClick={detectDislocations}>{loading ? "Detecting" : "Detect Dislocations"}</button>
+                <div className="grid-2">
+                  <div className="field"><label>Min gap pct</label><input type="number" min="0" max="1" step="0.001" value={form.min_abs_gap_pct} onChange={(e) => setForm({ ...form, min_abs_gap_pct: e.target.value })} /></div>
+                  <div className="field"><label>Min confluence</label><input type="number" min="0" max="1" step="0.01" value={form.min_total_score} onChange={(e) => setForm({ ...form, min_total_score: e.target.value })} /></div>
+                </div>
+                <div className="actions">
+                  <button className="primary" type="button" disabled={loading || signals.length === 0} onClick={detectDislocations}>{loading ? "Detecting" : "Detect Dislocations"}</button>
+                  <button type="button" disabled={loading || dislocations.length === 0} onClick={reviewConfluence}>Review Confluence</button>
+                </div>
               </section>
               <section className="panel">
                 <h2>Recent Events</h2>
@@ -1057,6 +1092,30 @@
                 <div className="metric"><span>Signals</span><strong>{signals.length}</strong></div>
                 <div className="metric"><span>Events</span><strong>{events.length}</strong></div>
                 <div className="metric"><span>Dislocations</span><strong>{dislocations.filter((item) => item.is_dislocated).length}</strong></div>
+                <div className="metric"><span>Paper Candidates</span><strong>{paperCandidates.length}</strong></div>
+                <div className="metric"><span>Confluence Reviews</span><strong>{confluenceReviews.length}</strong></div>
+                <div className="metric"><span>Rejected</span><strong>{confluenceReviews.filter((item) => item.status === "rejected").length}</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Paper Candidates</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Score</th><th>Action</th><th>Target</th><th>Entity</th><th>Status</th><th>Reason</th></tr></thead>
+                    <tbody>
+                      {confluenceReviews.length === 0 && <tr><td colSpan="6" className="muted">No confluence reviews yet.</td></tr>}
+                      {confluenceReviews.map((item) => (
+                        <tr key={item.review_id}>
+                          <td className={item.status === "paper_candidate" ? "pos" : ""}>{number(item.total_score)}</td>
+                          <td className={item.action === "Sell" ? "neg" : item.action === "Buy" ? "pos" : ""}>{item.action}</td>
+                          <td>{item.target_symbol}</td>
+                          <td>{item.entity}</td>
+                          <td>{item.status}</td>
+                          <td>{item.candidate?.reason || item.agent_reviews?.map((agent) => agent.reason).join(", ") || "--"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
               <section className="panel">
                 <h2>Detected Dislocations</h2>

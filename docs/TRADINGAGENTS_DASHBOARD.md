@@ -272,6 +272,7 @@ SQLite вече пази:
 - scanner events
 - scanner signals
 - scanner dislocations
+- scanner confluence reviews
 
 Основни API endpoints:
 
@@ -368,7 +369,9 @@ MVP функционалност:
 - cross-market mapping към US tickers/ETFs
 - bullish/bearish/watch посока от прост keyword sentiment
 - dislocation detector: reference proxy move vs US target move, gap и historical spread Z-score
-- SQLite persistence за events/signals/dislocations
+- deterministic confluence review: quantitative validator, news mapper, liquidity proxy и hard risk gate
+- paper-only candidate queue; не създава orders и не пипа broker/PaperLedger execution
+- SQLite persistence за events/signals/dislocations/confluence reviews
 - Dashboard tab `Scanner`
 
 Първоначални rule families:
@@ -389,6 +392,8 @@ GET /api/scanner/events
 GET /api/scanner/signals
 POST /api/scanner/dislocations/detect
 GET /api/scanner/dislocations
+POST /api/scanner/confluence/review
+GET /api/scanner/confluence/reviews
 ```
 
 ## Daily Automation
@@ -567,6 +572,8 @@ GET /api/scanner/events
 GET /api/scanner/signals
 POST /api/scanner/dislocations/detect
 GET /api/scanner/dislocations
+POST /api/scanner/confluence/review
+GET /api/scanner/confluence/reviews
 ```
 
 Orders / Risk / Audit:

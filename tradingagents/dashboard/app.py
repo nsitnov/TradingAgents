@@ -27,6 +27,10 @@ from tradingagents.dashboard.scanner import (
     RSSIngestRequest,
     ScannerEventRequest,
 )
+from tradingagents.dashboard.scanner_confluence import (
+    ConfluenceRequest,
+    ScannerConfluenceReviewer,
+)
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.dashboard.validation import validate_backtest_result
 
@@ -40,6 +44,7 @@ ledger.sync_to_storage()
 store = RunStore(ledger=ledger, storage=storage)
 agent_replay_service = AgentReplayService(storage=storage)
 scanner = CrossMarketScanner(storage=storage)
+scanner_confluence = ScannerConfluenceReviewer(storage=storage)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -257,6 +262,16 @@ def detect_scanner_dislocations(request: DislocationRequest):
 @app.get("/api/scanner/dislocations")
 def scanner_dislocations(limit: int = Query(default=100, ge=1, le=500)):
     return {"dislocations": scanner.dislocations(limit=limit)}
+
+
+@app.post("/api/scanner/confluence/review")
+def review_scanner_confluence(request: ConfluenceRequest):
+    return scanner_confluence.review(request)
+
+
+@app.get("/api/scanner/confluence/reviews")
+def scanner_confluence_reviews(limit: int = Query(default=100, ge=1, le=500)):
+    return {"reviews": scanner_confluence.reviews(limit=limit)}
 
 
 @app.get("/api/orders")
