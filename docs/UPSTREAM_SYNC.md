@@ -35,7 +35,8 @@ uv run pytest tests/test_dashboard_*.py
 ```
 
 Open a pull request from the `sync/upstream-YYYY-MM-DD` branch into `main`.
-Merge only after tests pass and dashboard behavior has been checked.
+Merge only after local tests and the GitHub Actions test workflow pass, and
+dashboard behavior has been checked.
 
 ## Conflict guidance
 
