@@ -21,6 +21,7 @@ from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
+from tradingagents.dashboard.scanner import CrossMarketScanner, RSSIngestRequest, ScannerEventRequest
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.dashboard.validation import validate_backtest_result
 
@@ -33,6 +34,7 @@ ledger = PaperLedger(storage=storage)
 ledger.sync_to_storage()
 store = RunStore(ledger=ledger, storage=storage)
 agent_replay_service = AgentReplayService(storage=storage)
+scanner = CrossMarketScanner(storage=storage)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -209,6 +211,34 @@ def cancel_agent_replay(job_id: str):
     if not agent_replay_service.cancel(job_id):
         raise HTTPException(status_code=404, detail="Active agent replay job not found")
     return {"status": "cancel_requested"}
+
+
+@app.get("/api/scanner/config")
+def scanner_config():
+    return scanner.config()
+
+
+@app.post("/api/scanner/events")
+def ingest_scanner_event(request: ScannerEventRequest):
+    return scanner.scan_event(request)
+
+
+@app.post("/api/scanner/rss")
+def ingest_scanner_rss(request: RSSIngestRequest):
+    try:
+        return scanner.ingest_rss(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/scanner/events")
+def scanner_events(limit: int = Query(default=100, ge=1, le=500)):
+    return {"events": scanner.events(limit=limit)}
+
+
+@app.get("/api/scanner/signals")
+def scanner_signals(limit: int = Query(default=100, ge=1, le=500)):
+    return {"signals": scanner.signals(limit=limit)}
 
 
 @app.get("/api/orders")

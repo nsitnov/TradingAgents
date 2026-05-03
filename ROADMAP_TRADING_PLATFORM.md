@@ -38,7 +38,7 @@
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
-| **Cross-market scanner** | **Липсва** | Това е твоят въпрос — виж секция 6 |
+| **Cross-market scanner** | **MVP observe-only готов** | Manual/RSS ingest, entity extraction, US target mapping, signal queue; без trading |
 
 ---
 
@@ -345,8 +345,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 - Седмица 4: Dashboard order/risk/audit UI + Telegram/email alerts for rejected orders and daily loss limit.
 
 ### Месец 2 — Cross-market scanner (твоят use case)
-- Седмица 5: News firehose + translation + entity extraction
-- Седмица 6: Cross-listed mapping + dislocation detector
+- Седмица 5: News firehose + translation + entity extraction. **MVP готов: manual/RSS ingest + rule-based extraction.**
+- Седмица 6: Cross-listed mapping + dislocation detector. **Mapping MVP готов; dislocation detector предстои.**
 - Седмица 7: Agent confluence layer + paper trading on signals
 - Седмица 8: Калибрация, A/B vs single-shot analyzer
 
@@ -365,7 +365,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 3. **Готово като MVP**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L, alpha vs SPY/QQQ.
 4. **Следващо**: Пусни batch replay върху 2024-2025 с `tradingagents` provider и отделен cost budget, за да видим реалното agent P&L.
 5. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
-6. **След validation**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
+6. **Готово като MVP**: Cross-market ingest — manual/RSS + entity extraction + US target signal queue, но без trading.
+7. **Следващо**: Добави dislocation detector с price moves/Z-score, за да отделяме истински lead-lag възможности от обикновени новини.
 
 ---
 

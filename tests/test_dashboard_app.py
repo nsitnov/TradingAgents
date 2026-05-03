@@ -147,3 +147,34 @@ def test_agent_replay_endpoints_are_available(monkeypatch):
     assert client.get("/api/agent-replays").json()["jobs"][0]["job_id"] == "replay-1"
     assert client.get("/api/agent-replays/replay-1").json()["status"] == "completed"
     assert client.post("/api/agent-replays/replay-1/cancel").json()["status"] == "cancel_requested"
+
+
+def test_scanner_endpoints_are_available(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+    storage = DashboardStorage(
+        db_path=tmp_path / "dashboard.sqlite3",
+        analyses_dir=tmp_path / "analyses",
+    )
+    scanner = dashboard_app.CrossMarketScanner(storage=storage)
+    monkeypatch.setattr(dashboard_app, "scanner", scanner)
+    client = TestClient(app)
+
+    config = client.get("/api/scanner/config").json()
+    assert "rules" in config
+
+    response = client.post(
+        "/api/scanner/events",
+        json={
+            "title": "ASML beats estimates on strong lithography demand",
+            "summary": "Semiconductor equipment demand rises.",
+            "source": "manual",
+            "region": "EU",
+            "url": "https://example.test/asml",
+            "published_at": "2026-01-05T08:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["signals"]
+    assert client.get("/api/scanner/events").json()["events"][0]["title"].startswith("ASML")
+    assert client.get("/api/scanner/signals").json()["signals"][0]["us_targets"]

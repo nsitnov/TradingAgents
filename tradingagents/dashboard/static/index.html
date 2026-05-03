@@ -257,6 +257,17 @@
         const [selectedAgentReplay, setSelectedAgentReplay] = useState(null);
         const [agentReplayLoading, setAgentReplayLoading] = useState(false);
         const [agentReplayError, setAgentReplayError] = useState("");
+        const [scannerForm, setScannerForm] = useState({
+          title: "TSMC raises guidance after strong AI chip demand",
+          summary: "Taiwan Semiconductor reports record growth in advanced chip demand.",
+          source: "manual",
+          region: "ASIA",
+          url: ""
+        });
+        const [scannerSignals, setScannerSignals] = useState([]);
+        const [scannerEvents, setScannerEvents] = useState([]);
+        const [scannerLoading, setScannerLoading] = useState(false);
+        const [scannerError, setScannerError] = useState("");
         const [error, setError] = useState("");
         const sourceRef = useRef(null);
 
@@ -268,6 +279,7 @@
           refreshCosts();
           refreshBacktests();
           refreshAgentReplays();
+          refreshScanner();
           return () => sourceRef.current?.close();
         }, []);
 
@@ -399,6 +411,36 @@
           openAgentReplay(jobId);
         }
 
+        async function refreshScanner() {
+          const [signalsRes, eventsRes] = await Promise.all([
+            fetch("/api/scanner/signals"),
+            fetch("/api/scanner/events")
+          ]);
+          if (signalsRes.ok) setScannerSignals((await signalsRes.json()).signals || []);
+          if (eventsRes.ok) setScannerEvents((await eventsRes.json()).events || []);
+        }
+
+        async function ingestScannerEvent(event) {
+          event.preventDefault();
+          setScannerError("");
+          setScannerLoading(true);
+          try {
+            const res = await fetch("/api/scanner/events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(scannerForm)
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setScannerError(body.detail || "Could not ingest scanner event");
+              return;
+            }
+            refreshScanner();
+          } finally {
+            setScannerLoading(false);
+          }
+        }
+
         async function startRun(event) {
           event.preventDefault();
           setError("");
@@ -463,6 +505,7 @@
                   ["portfolio", "Paper Portfolio"],
                   ["backtests", "Backtests"],
                   ["agentReplay", "Agent Replay"],
+                  ["scanner", "Scanner"],
                   ["automation", "Automation"],
                   ["history", "Analysis History"],
                   ["costs", "OpenAI Spend"]
@@ -492,6 +535,7 @@
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
             {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
+            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} refresh={refreshScanner} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -929,6 +973,72 @@
                     </tbody>
                   </table>
                 )}
+              </section>
+            </section>
+          </main>
+        );
+      }
+
+      function ScannerDashboard({ form, setForm, signals, events, loading, error, ingestEvent, refresh }) {
+        return (
+          <main>
+            <aside className="sidebar">
+              <section className="panel">
+                <h2>Manual Event</h2>
+                <form onSubmit={ingestEvent}>
+                  <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
+                  <div className="field"><label>Summary</label><input value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
+                  <div className="grid-2">
+                    <div className="field"><label>Region</label><select value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })}>{["GLOBAL", "ASIA", "EU", "ME", "US"].map((item) => <option key={item}>{item}</option>)}</select></div>
+                    <div className="field"><label>Source</label><input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} /></div>
+                  </div>
+                  <div className="field"><label>URL</label><input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
+                  <div className="actions">
+                    <button className="primary" type="submit" disabled={loading}>{loading ? "Scanning" : "Scan Event"}</button>
+                    <button type="button" onClick={refresh}>Refresh</button>
+                  </div>
+                  {error && <p className="neg">{error}</p>}
+                </form>
+              </section>
+              <section className="panel">
+                <h2>Recent Events</h2>
+                <div className="agent-list">
+                  {events.length === 0 && <p className="muted">No scanner events yet.</p>}
+                  {events.slice(0, 8).map((event) => (
+                    <div className="agent" key={event.event_id}>
+                      <span>{event.title}</span>
+                      <span className="muted">{event.region}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </aside>
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>Signals</span><strong>{signals.length}</strong></div>
+                <div className="metric"><span>Events</span><strong>{events.length}</strong></div>
+                <div className="metric"><span>Mode</span><strong>Observe</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Cross-Market Signals</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Score</th><th>Entity</th><th>Direction</th><th>US Targets</th><th>Reason</th><th>Region</th></tr></thead>
+                    <tbody>
+                      {signals.length === 0 && <tr><td colSpan="6" className="muted">No scanner signals yet.</td></tr>}
+                      {signals.map((signal) => (
+                        <tr key={signal.signal_id}>
+                          <td>{number(signal.score)}</td>
+                          <td>{signal.entity}</td>
+                          <td className={signal.direction === "bearish" ? "neg" : signal.direction === "bullish" ? "pos" : ""}>{signal.direction}</td>
+                          <td>{(signal.us_targets || []).join(", ")}</td>
+                          <td>{signal.reason}</td>
+                          <td>{signal.region}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             </section>
           </main>

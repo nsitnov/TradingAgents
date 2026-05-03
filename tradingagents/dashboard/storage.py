@@ -211,6 +211,36 @@ class DashboardStorage:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS scanner_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_hash TEXT NOT NULL UNIQUE,
+                    source TEXT NOT NULL,
+                    region TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    url TEXT,
+                    published_at TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    event_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS scanner_signals (
+                    signal_id TEXT PRIMARY KEY,
+                    event_id INTEGER NOT NULL,
+                    event_hash TEXT NOT NULL,
+                    entity TEXT NOT NULL,
+                    region TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    reason TEXT NOT NULL,
+                    targets_json TEXT NOT NULL,
+                    signal_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -848,6 +878,107 @@ class DashboardStorage:
             ).fetchone()
         return self._row_to_agent_replay_job(row, include_result=True) if row else None
 
+    def upsert_scanner_event(self, event: Dict[str, Any]) -> int:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO scanner_events (
+                    event_hash, source, region, title, summary, url, published_at,
+                    language, event_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_hash) DO UPDATE SET
+                    source=excluded.source,
+                    region=excluded.region,
+                    title=excluded.title,
+                    summary=excluded.summary,
+                    url=excluded.url,
+                    published_at=excluded.published_at,
+                    language=excluded.language,
+                    event_json=excluded.event_json
+                """,
+                (
+                    event["event_hash"],
+                    event.get("source", ""),
+                    event.get("region", "GLOBAL"),
+                    event.get("title", ""),
+                    event.get("summary", ""),
+                    event.get("url"),
+                    event.get("published_at") or now_iso(),
+                    event.get("language", "en"),
+                    _json(event),
+                    event.get("created_at") or now_iso(),
+                ),
+            )
+            row = conn.execute(
+                "SELECT event_id FROM scanner_events WHERE event_hash = ?",
+                (event["event_hash"],),
+            ).fetchone()
+        return int(row["event_id"])
+
+    def scanner_events(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM scanner_events
+                ORDER BY published_at DESC, event_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_scanner_event(row) for row in rows]
+
+    def upsert_scanner_signal(self, signal: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO scanner_signals (
+                    signal_id, event_id, event_hash, entity, region, category,
+                    direction, score, confidence, reason, targets_json,
+                    signal_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(signal_id) DO UPDATE SET
+                    event_id=excluded.event_id,
+                    entity=excluded.entity,
+                    region=excluded.region,
+                    category=excluded.category,
+                    direction=excluded.direction,
+                    score=excluded.score,
+                    confidence=excluded.confidence,
+                    reason=excluded.reason,
+                    targets_json=excluded.targets_json,
+                    signal_json=excluded.signal_json
+                """,
+                (
+                    signal["signal_id"],
+                    int(signal["event_id"]),
+                    signal.get("event_hash", ""),
+                    signal.get("entity", ""),
+                    signal.get("region", "GLOBAL"),
+                    signal.get("category", ""),
+                    signal.get("direction", "watch"),
+                    float(signal.get("score", 0.0)),
+                    float(signal.get("confidence", 0.0)),
+                    signal.get("reason", ""),
+                    _json(signal.get("us_targets", [])),
+                    _json(signal),
+                    signal.get("created_at") or now_iso(),
+                ),
+            )
+
+    def scanner_signals(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM scanner_signals
+                ORDER BY score DESC, created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_scanner_signal(row) for row in rows]
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],
@@ -919,6 +1050,44 @@ class DashboardStorage:
         if include_result:
             item["result"] = _loads(row["result_json"], {})
         return item
+
+    def _row_to_scanner_event(self, row: sqlite3.Row) -> Dict[str, Any]:
+        event = _loads(row["event_json"], {})
+        event.update(
+            {
+                "event_id": row["event_id"],
+                "event_hash": row["event_hash"],
+                "source": row["source"],
+                "region": row["region"],
+                "title": row["title"],
+                "summary": row["summary"],
+                "url": row["url"],
+                "published_at": row["published_at"],
+                "language": row["language"],
+                "created_at": row["created_at"],
+            }
+        )
+        return event
+
+    def _row_to_scanner_signal(self, row: sqlite3.Row) -> Dict[str, Any]:
+        signal = _loads(row["signal_json"], {})
+        signal.update(
+            {
+                "signal_id": row["signal_id"],
+                "event_id": row["event_id"],
+                "event_hash": row["event_hash"],
+                "entity": row["entity"],
+                "region": row["region"],
+                "category": row["category"],
+                "direction": row["direction"],
+                "score": row["score"],
+                "confidence": row["confidence"],
+                "reason": row["reason"],
+                "us_targets": _loads(row["targets_json"], []),
+                "created_at": row["created_at"],
+            }
+        )
+        return signal
 
     def _analysis_dir(self, analysis_date: str, ticker: str, run_id: str) -> Path:
         safe_ticker = "".join(ch for ch in ticker.upper() if ch.isalnum() or ch in ".-_")

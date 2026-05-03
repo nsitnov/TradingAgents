@@ -269,6 +269,8 @@ SQLite вече пази:
 - audit events
 - backtests
 - agent replay jobs
+- scanner events
+- scanner signals
 
 Основни API endpoints:
 
@@ -351,6 +353,38 @@ POST /api/agent-replays
 GET /api/agent-replays
 GET /api/agent-replays/{job_id}
 POST /api/agent-replays/{job_id}/cancel
+```
+
+## Cross-Market Scanner MVP
+
+Scanner-ът е observe-only слой. Той не създава orders, не пипа PaperLedger-а и не извиква broker adapter-и. Целта е да събира foreign/macro/news събития, да ги map-ва към US instruments и да държи signal queue за наблюдение.
+
+MVP функционалност:
+
+- manual event ingest
+- RSS ingest през `POST /api/scanner/rss`
+- rule-based entity extraction
+- cross-market mapping към US tickers/ETFs
+- bullish/bearish/watch посока от прост keyword sentiment
+- SQLite persistence за events/signals
+- Dashboard tab `Scanner`
+
+Първоначални rule families:
+
+- ASML / TSMC / global semiconductors → `ASML`, `TSM`, `NVDA`, `AMD`, `SMH`, `SOXX`
+- Toyota / Sony → ADR/region ETFs
+- SAP / Novo Nordisk → US ADR + sector ETFs
+- OPEC/Saudi/oil → `XLE`, `XOP`, `OIH`, `USO`
+- BoJ/JPY, ECB/EUR, China/HK macro → FX/region ETFs и ADR baskets
+
+API endpoints:
+
+```text
+GET /api/scanner/config
+POST /api/scanner/events
+POST /api/scanner/rss
+GET /api/scanner/events
+GET /api/scanner/signals
 ```
 
 ## Daily Automation
@@ -517,6 +551,16 @@ POST /api/agent-replays
 GET /api/agent-replays
 GET /api/agent-replays/{job_id}
 POST /api/agent-replays/{job_id}/cancel
+```
+
+Scanner:
+
+```text
+GET /api/scanner/config
+POST /api/scanner/events
+POST /api/scanner/rss
+GET /api/scanner/events
+GET /api/scanner/signals
 ```
 
 Orders / Risk / Audit:
