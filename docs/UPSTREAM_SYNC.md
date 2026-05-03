@@ -13,6 +13,11 @@ this fork.
 
 ## Manual update process
 
+GitHub Actions runs the `Upstream Sync` workflow every Monday at 05:17 UTC. It
+checks `upstream/main`, creates or updates a `sync/upstream-YYYY-MM-DD` branch,
+and opens a pull request into `main` when there are upstream changes. It never
+auto-merges.
+
 Use a short-lived integration branch for each upstream update:
 
 ```bash

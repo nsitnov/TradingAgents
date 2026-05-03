@@ -1,0 +1,90 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  upstream-sync:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream into sync branch
+        id: sync
+        run: |
+          set -euo pipefail
+
+          git remote add upstream https://github.com/tauricresearch/tradingagents.git
+          git fetch origin main
+          git fetch upstream main
+          git checkout main
+          git reset --hard origin/main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No upstream changes to sync."
+            exit 0
+          fi
+
+          existing_branch="$(gh pr list --base main --state open --json headRefName --jq '.[] | select(.headRefName | startswith("sync/upstream-")) | .headRefName' | head -n 1)"
+          if [ -n "$existing_branch" ]; then
+            branch="$existing_branch"
+            existing_pr="true"
+          else
+            branch="sync/upstream-$(date -u +%Y-%m-%d)"
+            existing_pr="false"
+          fi
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "existing_pr=$existing_pr" >> "$GITHUB_OUTPUT"
+
+          git checkout -B "$branch"
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::Upstream merge conflict. Resolve manually from origin/main by merging upstream/main into $branch."
+            git diff --name-only --diff-filter=U || true
+            exit 1
+          fi
+
+          git push --force-with-lease origin "$branch"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.sync.outputs.changed == 'true' && steps.sync.outputs.existing_pr == 'false'
+        run: |
+          set -euo pipefail
+
+          branch="${{ steps.sync.outputs.branch }}"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Sync upstream changes $(date -u +%Y-%m-%d)" \
+            --body "Automated upstream sync from TauricResearch/TradingAgents.
+
+          Validation before merge:
+          - GitHub Actions Tests must pass.
+          - Dashboard behavior must be reviewed.
+
+          This PR is intentionally not auto-merged."
+
+      - name: Report existing pull request
+        if: steps.sync.outputs.changed == 'true' && steps.sync.outputs.existing_pr == 'true'
+        run: |
+          echo "Updated existing upstream sync branch: ${{ steps.sync.outputs.branch }}"
