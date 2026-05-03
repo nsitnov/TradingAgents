@@ -243,6 +243,19 @@
         const [postmortems, setPostmortems] = useState({ summary: {}, postmortems: [] });
         const [progressWeekly, setProgressWeekly] = useState(null);
         const [progressHistory, setProgressHistory] = useState([]);
+        const [llmEvalScorecard, setLlmEvalScorecard] = useState({ latest: null, models: [], recommendation: {} });
+        const [llmEvalRuns, setLlmEvalRuns] = useState([]);
+        const [llmEvalLoading, setLlmEvalLoading] = useState(false);
+        const [llmEvalError, setLlmEvalError] = useState("");
+        const [llmEvalForm, setLlmEvalForm] = useState({
+          models: "qwen3.6:27b,qwen3.6:35b",
+          baseline_model: "gpt-oss:20b",
+          max_runtime_gib: 35,
+          memory_reserve_gib: 32,
+          auto_promote: true,
+          allow_pull: false,
+          backend_url: "http://localhost:11434"
+        });
         const [backtestForm, setBacktestForm] = useState({
           tickers: "SPY",
           start: defaultBacktestStart,
@@ -321,6 +334,7 @@
           refreshCosts();
           refreshReadiness();
           refreshProgress();
+          refreshLlmEval();
           refreshBacktests();
           refreshAgentReplays();
           refreshScanner();
@@ -424,6 +438,46 @@
           ]);
           if (weeklyRes.ok) setProgressWeekly(await weeklyRes.json());
           if (historyRes.ok) setProgressHistory((await historyRes.json()).weeks || []);
+        }
+
+        async function refreshLlmEval() {
+          const [scorecardRes, runsRes] = await Promise.all([
+            fetch("/api/llm-eval/scorecard"),
+            fetch("/api/llm-eval/runs")
+          ]);
+          if (scorecardRes.ok) setLlmEvalScorecard(await scorecardRes.json());
+          if (runsRes.ok) setLlmEvalRuns((await runsRes.json()).runs || []);
+        }
+
+        async function runLlmEval(event) {
+          event.preventDefault();
+          setLlmEvalError("");
+          setLlmEvalLoading(true);
+          const payload = {
+            models: llmEvalForm.models.split(",").map((item) => item.trim()).filter(Boolean),
+            baseline_model: llmEvalForm.baseline_model,
+            max_runtime_gib: Number(llmEvalForm.max_runtime_gib || 35),
+            memory_reserve_gib: Number(llmEvalForm.memory_reserve_gib || 32),
+            auto_promote: !!llmEvalForm.auto_promote,
+            allow_pull: !!llmEvalForm.allow_pull,
+            backend_url: llmEvalForm.backend_url
+          };
+          try {
+            const res = await fetch("/api/llm-eval/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setLlmEvalError(body.detail || "Could not run LLM evaluation");
+              return;
+            }
+            refreshLlmEval();
+            refreshAutopilot();
+          } finally {
+            setLlmEvalLoading(false);
+          }
         }
 
         async function refreshBacktests() {
@@ -709,6 +763,7 @@
                 {[
                   ["progress", "Progress"],
                   ["autopilot", "Autopilot"],
+                  ["llmEval", "LLM Scorecard"],
                   ["live", "Live Runs"],
                   ["portfolio", "Paper Portfolio"],
                   ["backtests", "Backtest Lab"],
@@ -726,6 +781,7 @@
             </header>
             {tab === "progress" && <ProgressDashboard weekly={progressWeekly} history={progressHistory} refresh={refreshProgress} />}
             {tab === "autopilot" && <AutopilotDashboard config={autopilotConfig} status={autopilotStatus} jobs={autopilotJobs} loading={autopilotLoading} error={autopilotError} saveConfig={saveAutopilotConfig} runNow={runAutopilotNow} refresh={refreshAutopilot} scannerCalibration={scannerCalibration} readiness={stabilityGate} />}
+            {tab === "llmEval" && <LlmEvalDashboard form={llmEvalForm} setForm={setLlmEvalForm} scorecard={llmEvalScorecard} runs={llmEvalRuns} loading={llmEvalLoading} error={llmEvalError} runEval={runLlmEval} refresh={refreshLlmEval} />}
             {tab === "live" && (
               <main>
                 <aside className="sidebar">
@@ -969,6 +1025,108 @@
                           <td>{row.autopilot_jobs || 0}</td>
                           <td>{row.orders || 0}</td>
                           <td>{money(row.openai_cost_usd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
+          </main>
+        );
+      }
+
+      function LlmEvalDashboard({ form, setForm, scorecard, runs, loading, error, runEval, refresh }) {
+        const latest = scorecard?.latest || {};
+        const recommendation = scorecard?.recommendation || {};
+        const models = scorecard?.models || [];
+        const tone = (status) => status === "completed" || status === "promote" ? "pos" : status === "reject" || status === "too_large" || status === "error" ? "neg" : "muted";
+        const pct = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`;
+        return (
+          <main>
+            <aside className="sidebar">
+              <section className="panel">
+                <h2>LLM Evaluation</h2>
+                <form onSubmit={runEval}>
+                  <div className="field"><label>Candidate models</label><input value={form.models} onChange={(e) => setForm({ ...form, models: e.target.value })} /></div>
+                  <div className="field"><label>Baseline</label><input value={form.baseline_model} onChange={(e) => setForm({ ...form, baseline_model: e.target.value })} /></div>
+                  <div className="grid-2">
+                    <div className="field"><label>Max GiB</label><input type="number" step="1" value={form.max_runtime_gib} onChange={(e) => setForm({ ...form, max_runtime_gib: Number(e.target.value || 35) })} /></div>
+                    <div className="field"><label>Reserve GiB</label><input type="number" step="1" value={form.memory_reserve_gib} onChange={(e) => setForm({ ...form, memory_reserve_gib: Number(e.target.value || 32) })} /></div>
+                  </div>
+                  <div className="field"><label>Ollama URL</label><input value={form.backend_url} onChange={(e) => setForm({ ...form, backend_url: e.target.value })} /></div>
+                  <div className="checks">
+                    <label><input type="checkbox" checked={!!form.auto_promote} onChange={(e) => setForm({ ...form, auto_promote: e.target.checked })} />Auto promote</label>
+                    <label><input type="checkbox" checked={!!form.allow_pull} onChange={(e) => setForm({ ...form, allow_pull: e.target.checked })} />Allow pull</label>
+                  </div>
+                  <div className="actions">
+                    <button className="primary" type="submit" disabled={loading}>{loading ? "Running" : "Run Eval"}</button>
+                    <button type="button" onClick={refresh}>Refresh</button>
+                  </div>
+                  {error && <p className="neg">{error}</p>}
+                </form>
+              </section>
+              <section className="panel">
+                <h2>Latest Decision</h2>
+                <div className="agent-list">
+                  <div className="agent"><span>Decision</span><span className={tone(recommendation.decision)}>{recommendation.decision || "--"}</span></div>
+                  <div className="agent"><span>Model</span><span>{recommendation.model || "--"}</span></div>
+                  <div className="agent"><span>Promoted</span><span className={recommendation.promoted ? "pos" : "muted"}>{recommendation.promoted ? "yes" : "no"}</span></div>
+                </div>
+                <p className="muted">{recommendation.reason || "No evaluation completed yet."}</p>
+              </section>
+            </aside>
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>Status</span><strong className={tone(latest.status)}>{latest.status || "--"}</strong></div>
+                <div className="metric"><span>Baseline</span><strong>{latest.baseline_model || form.baseline_model}</strong></div>
+                <div className="metric"><span>Models</span><strong>{models.length}</strong></div>
+                <div className="metric"><span>Started</span><strong>{latest.started_at || "--"}</strong></div>
+                <div className="metric"><span>Ended</span><strong>{latest.ended_at || "--"}</strong></div>
+                <div className="metric"><span>Foreign Models</span><strong>{(latest.foreign_running_models || []).length}</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Model Scorecard</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Model</th><th>Status</th><th>Score</th><th>RAM</th><th>Schema</th><th>Risk</th><th>Halluc.</th><th>p95</th><th>Decision</th></tr></thead>
+                    <tbody>
+                      {models.length === 0 && <tr><td colSpan="9" className="muted">No LLM evaluations yet.</td></tr>}
+                      {models.map((item) => {
+                        const metrics = item.metrics || {};
+                        return (
+                          <tr key={item.model}>
+                            <td>{item.model}</td>
+                            <td className={tone(item.status)}>{item.status}</td>
+                            <td>{number(item.composite_score)}</td>
+                            <td>{number(metrics.runtime_gib)} GiB</td>
+                            <td>{pct(metrics.schema_success_rate)}</td>
+                            <td className={(metrics.risk_instruction_violation_rate || 0) > 0 ? "neg" : ""}>{pct(metrics.risk_instruction_violation_rate)}</td>
+                            <td className={(metrics.hallucinated_ticker_rate || 0) > 0 ? "neg" : ""}>{pct(metrics.hallucinated_ticker_rate)}</td>
+                            <td>{number(metrics.p95_latency_ms)} ms</td>
+                            <td>{item.decision?.decision || "--"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section className="panel">
+                <h2>Evaluation Runs</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Started</th><th>Status</th><th>Baseline</th><th>Decision</th><th>Model</th><th>Error</th></tr></thead>
+                    <tbody>
+                      {runs.length === 0 && <tr><td colSpan="6" className="muted">No evaluation runs yet.</td></tr>}
+                      {runs.map((run) => (
+                        <tr key={run.eval_id}>
+                          <td>{run.started_at}</td>
+                          <td className={tone(run.status)}>{run.status}</td>
+                          <td>{run.baseline_model}</td>
+                          <td>{run.recommendation?.decision || "--"}</td>
+                          <td>{run.recommendation?.model || "--"}</td>
+                          <td className="neg">{run.error || "--"}</td>
                         </tr>
                       ))}
                     </tbody>

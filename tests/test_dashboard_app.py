@@ -109,6 +109,45 @@ def test_progress_endpoints_are_available(monkeypatch):
     assert client.get("/api/progress/history").json()["weeks"][0]["overall_status"] == "improving"
 
 
+def test_llm_eval_endpoints_are_available(monkeypatch):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+
+    class StubLLMEvalService:
+        def runs(self, limit=50):
+            return [{"eval_id": "llm-eval-1", "status": "completed"}]
+
+        def detail(self, eval_id):
+            return {"eval_id": eval_id, "status": "completed", "model_results": []}
+
+        def run(self, request):
+            return {
+                "eval_id": "llm-eval-1",
+                "status": "completed",
+                "baseline_model": request.baseline_model,
+                "recommendation": {"decision": "keep", "model": request.baseline_model},
+            }
+
+        def scorecard(self):
+            return {
+                "latest": {"eval_id": "llm-eval-1"},
+                "models": [],
+                "recommendation": {"decision": "keep"},
+            }
+
+    monkeypatch.setattr(dashboard_app, "llm_eval_service", StubLLMEvalService())
+    client = TestClient(app)
+
+    assert client.get("/api/llm-eval/runs").json()["runs"][0]["eval_id"] == "llm-eval-1"
+    assert client.get("/api/llm-eval/runs/llm-eval-1").json()["status"] == "completed"
+    assert client.get("/api/llm-eval/scorecard").json()["recommendation"]["decision"] == "keep"
+    response = client.post(
+        "/api/llm-eval/run",
+        json={"models": [], "baseline_model": "gpt-oss:20b"},
+    )
+    assert response.status_code == 200
+    assert response.json()["baseline_model"] == "gpt-oss:20b"
+
+
 def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
     storage = DashboardStorage(

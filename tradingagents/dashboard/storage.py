@@ -287,6 +287,43 @@ class DashboardStorage:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS llm_eval_runs (
+                    eval_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    baseline_model TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    config_json TEXT NOT NULL,
+                    recommendation_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    error TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS llm_eval_model_results (
+                    eval_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    composite_score REAL NOT NULL,
+                    runtime_gib REAL NOT NULL,
+                    p95_latency_ms REAL NOT NULL,
+                    metrics_json TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (eval_id, model)
+                );
+
+                CREATE TABLE IF NOT EXISTS llm_eval_prompt_results (
+                    eval_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    prompt_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    latency_ms REAL NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (eval_id, model, prompt_id)
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -591,6 +628,120 @@ class DashboardStorage:
                 (limit,),
             ).fetchall()
         return [self._row_to_autopilot_job(row) for row in rows]
+
+    def upsert_llm_eval_run(self, result: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO llm_eval_runs (
+                    eval_id, status, baseline_model, started_at, ended_at,
+                    config_json, recommendation_json, result_json, error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(eval_id) DO UPDATE SET
+                    status=excluded.status,
+                    ended_at=excluded.ended_at,
+                    config_json=excluded.config_json,
+                    recommendation_json=excluded.recommendation_json,
+                    result_json=excluded.result_json,
+                    error=excluded.error,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    result["eval_id"],
+                    result.get("status", "unknown"),
+                    result.get("baseline_model", ""),
+                    result.get("started_at") or now_iso(),
+                    result.get("ended_at"),
+                    _json(result.get("config", {})),
+                    _json(result.get("recommendation", {})),
+                    _json(result),
+                    result.get("error"),
+                    now_iso(),
+                ),
+            )
+            for model_result in result.get("model_results", []):
+                metrics = model_result.get("metrics", {})
+                conn.execute(
+                    """
+                    INSERT INTO llm_eval_model_results (
+                        eval_id, model, status, composite_score, runtime_gib,
+                        p95_latency_ms, metrics_json, decision_json, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(eval_id, model) DO UPDATE SET
+                        status=excluded.status,
+                        composite_score=excluded.composite_score,
+                        runtime_gib=excluded.runtime_gib,
+                        p95_latency_ms=excluded.p95_latency_ms,
+                        metrics_json=excluded.metrics_json,
+                        decision_json=excluded.decision_json
+                    """,
+                    (
+                        result["eval_id"],
+                        model_result.get("model", ""),
+                        model_result.get("status", "unknown"),
+                        float(model_result.get("composite_score", 0.0)),
+                        float(metrics.get("runtime_gib", 0.0)),
+                        float(metrics.get("p95_latency_ms", 0.0)),
+                        _json(metrics),
+                        _json(model_result.get("decision", {})),
+                        model_result.get("created_at") or now_iso(),
+                    ),
+                )
+                for prompt_result in model_result.get("prompt_results", []):
+                    conn.execute(
+                        """
+                        INSERT INTO llm_eval_prompt_results (
+                            eval_id, model, prompt_id, status, latency_ms,
+                            result_json, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(eval_id, model, prompt_id) DO UPDATE SET
+                            status=excluded.status,
+                            latency_ms=excluded.latency_ms,
+                            result_json=excluded.result_json
+                        """,
+                        (
+                            result["eval_id"],
+                            model_result.get("model", ""),
+                            prompt_result.get("prompt_id", ""),
+                            prompt_result.get("status", "unknown"),
+                            float(prompt_result.get("latency_ms", 0.0)),
+                            _json(prompt_result),
+                            prompt_result.get("created_at") or now_iso(),
+                        ),
+                    )
+
+    def llm_eval_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM llm_eval_runs
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_llm_eval_run(row, include_result=False) for row in rows]
+
+    def llm_eval_run_detail(self, eval_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM llm_eval_runs WHERE eval_id = ?", (eval_id,)
+            ).fetchone()
+        return self._row_to_llm_eval_run(row, include_result=True) if row else None
+
+    def latest_llm_eval_scorecard(self) -> Dict[str, Any]:
+        runs = self.llm_eval_runs(limit=1)
+        if not runs:
+            return {"latest": None, "models": [], "recommendation": {}}
+        latest = self.llm_eval_run_detail(runs[0]["eval_id"]) or runs[0]
+        return {
+            "latest": latest,
+            "models": latest.get("model_results", []),
+            "recommendation": latest.get("recommendation", {}),
+        }
 
     def replace_openai_costs(self, costs: List[Dict[str, Any]]) -> None:
         if not costs:
@@ -1290,6 +1441,24 @@ class DashboardStorage:
             "result": _loads(row["result_json"], {}),
             "error": row["error"],
         }
+
+    def _row_to_llm_eval_run(
+        self, row: sqlite3.Row, *, include_result: bool
+    ) -> Dict[str, Any]:
+        result = _loads(row["result_json"], {}) if include_result else {}
+        item = {
+            "eval_id": row["eval_id"],
+            "status": row["status"],
+            "baseline_model": row["baseline_model"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+            "config": _loads(row["config_json"], {}),
+            "recommendation": _loads(row["recommendation_json"], {}),
+            "error": row["error"],
+        }
+        if include_result:
+            item.update(result)
+        return item
 
     def _row_to_scanner_event(self, row: sqlite3.Row) -> Dict[str, Any]:
         event = _loads(row["event_json"], {})

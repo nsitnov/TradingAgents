@@ -20,6 +20,7 @@ from tradingagents.dashboard.backtest import BacktestEngine, BacktestRequest
 from tradingagents.dashboard.brokers import BrokerError, broker_config_from_env, broker_from_env
 from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
+from tradingagents.dashboard.llm_eval import LLMEvalRequest, LLMEvalService
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
 from tradingagents.dashboard.progress import ProgressReporter
@@ -61,6 +62,7 @@ progress_reporter = ProgressReporter(
     scanner_calibration=scanner_calibration,
     readiness=readiness_reporter,
 )
+llm_eval_service = LLMEvalService(storage=storage)
 autopilot_service = AutopilotService(
     storage=storage,
     ledger=ledger,
@@ -374,6 +376,37 @@ def weekly_progress():
 @app.get("/api/progress/history")
 def progress_history(weeks: int = Query(default=8, ge=1, le=52)):
     return progress_reporter.history(weeks=weeks)
+
+
+@app.get("/api/llm-eval/runs")
+def llm_eval_runs(limit: int = Query(default=50, ge=1, le=200)):
+    return {"runs": llm_eval_service.runs(limit=limit)}
+
+
+@app.get("/api/llm-eval/runs/{eval_id}")
+def llm_eval_run(eval_id: str):
+    result = llm_eval_service.detail(eval_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="LLM evaluation run not found")
+    return result
+
+
+@app.post("/api/llm-eval/run")
+def start_llm_eval(request: LLMEvalRequest):
+    try:
+        result = llm_eval_service.run(request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error", "LLM evaluation failed"))
+    return result
+
+
+@app.get("/api/llm-eval/scorecard")
+def llm_eval_scorecard():
+    return llm_eval_service.scorecard()
 
 
 @app.get("/api/autopilot/config")
