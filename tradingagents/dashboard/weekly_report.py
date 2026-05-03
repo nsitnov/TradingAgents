@@ -464,7 +464,7 @@ def main() -> None:
     if args.dry_run:
         print(result["text"])
     else:
-        print(json.dumps(result, indent=2))
+        print(json.dumps({"status": result["status"], "email": result["email"]}, indent=2))
 
 
 if __name__ == "__main__":
