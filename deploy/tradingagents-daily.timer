@@ -1,0 +1,10 @@
+[Unit]
+Description=Run TradingAgents paper automation every weekday morning
+
+[Timer]
+OnCalendar=Mon..Fri 09:00:00
+Persistent=true
+Unit=tradingagents-daily.service
+
+[Install]
+WantedBy=timers.target

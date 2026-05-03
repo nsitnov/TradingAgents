@@ -1,0 +1,7 @@
+tunnel: d36abb89-b2e9-400f-afc4-642cd40aee4d
+credentials-file: /home/nsitnov/.cloudflared/d36abb89-b2e9-400f-afc4-642cd40aee4d.json
+
+ingress:
+  - hostname: tradeagents.sitnov.work
+    service: http://127.0.0.1:8790
+  - service: http_status:404

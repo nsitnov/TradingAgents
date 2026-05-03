@@ -1,0 +1,20 @@
+[Unit]
+Description=TradingAgents Web Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nsitnov/tradingagents
+Environment=TRADINGAGENTS_DASHBOARD_HOST=127.0.0.1
+Environment=TRADINGAGENTS_DASHBOARD_PORT=8790
+EnvironmentFile=-/home/nsitnov/.config/tradingagents-dashboard.env
+ExecStart=/home/nsitnov/tradingagents/.venv/bin/uvicorn tradingagents.dashboard.app:app --host 127.0.0.1 --port 8790
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradingagents-dashboard
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel for TradingAgents Dashboard
+After=network-online.target tradingagents-dashboard.service
+Wants=network-online.target tradingagents-dashboard.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate --config /home/nsitnov/.cloudflared/config-tradeagents.yml tunnel run
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradeagents-cloudflared
+
+[Install]
+WantedBy=default.target

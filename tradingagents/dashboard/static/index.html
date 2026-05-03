@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TradingAgents Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --ink: #17202a;
+        --muted: #687385;
+        --line: #d9dee7;
+        --blue: #2563eb;
+        --green: #0f8a5f;
+        --red: #c2413a;
+        --amber: #b7791f;
+        --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 4;
+      }
+
+      h1 { font-size: 18px; margin: 0; font-weight: 700; }
+      h2 { font-size: 14px; margin: 0 0 10px; color: #293241; }
+      button, input, select {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+      }
+      input, select { min-height: 34px; padding: 6px 8px; width: 100%; }
+      button {
+        min-height: 34px;
+        padding: 7px 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+      button.danger { color: var(--red); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      main {
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr);
+        gap: 14px;
+        padding: 14px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 14px;
+        min-width: 0;
+      }
+
+      .sidebar { display: grid; gap: 14px; align-content: start; }
+      .content { display: grid; gap: 14px; min-width: 0; }
+      .wide-main { grid-template-columns: 1fr; }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .field { display: grid; gap: 5px; margin-bottom: 10px; }
+      .field label { font-size: 12px; color: var(--muted); font-weight: 650; }
+      .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .checks label { display: flex; gap: 7px; align-items: center; font-size: 13px; }
+      .checks input { width: auto; min-height: auto; }
+      .actions { display: flex; gap: 8px; }
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px;
+        min-height: 62px;
+        background: #fbfcfe;
+      }
+      .metric span { display: block; color: var(--muted); font-size: 12px; }
+      .metric strong { display: block; font-size: 18px; margin-top: 4px; }
+      .status-pill {
+        display: inline-flex;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #edf2ff;
+        color: #2448b8;
+      }
+      .status-completed { background: #e8f7ef; color: var(--green); }
+      .status-error, .status-cancelled { background: #fdeceb; color: var(--red); }
+      .agent-list { display: grid; gap: 6px; }
+      .agent {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-bottom: 1px solid #eef1f5;
+        padding: 6px 0;
+        font-size: 13px;
+      }
+      .feed {
+        height: 360px;
+        overflow: auto;
+        display: grid;
+        align-content: start;
+        gap: 8px;
+      }
+      .event {
+        border-left: 3px solid var(--blue);
+        padding: 7px 9px;
+        background: #fbfcfe;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+      }
+      .event small { color: var(--muted); display: block; margin-bottom: 3px; }
+      .reports {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .report {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        min-height: 150px;
+        max-height: 320px;
+        overflow: auto;
+        background: #fbfcfe;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { border-bottom: 1px solid #eef1f5; padding: 7px 6px; text-align: left; }
+      th { color: var(--muted); font-weight: 700; }
+      .pos { color: var(--green); }
+      .neg { color: var(--red); }
+      .muted { color: var(--muted); }
+      .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+      .tab {
+        min-height: 30px;
+        padding: 5px 10px;
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+      }
+      .tab.active { background: #edf2ff; color: var(--blue); border-color: #c8d7ff; }
+      .chart {
+        display: grid;
+        grid-auto-flow: column;
+        align-items: end;
+        gap: 3px;
+        height: 180px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        background: #fbfcfe;
+        overflow: hidden;
+      }
+      .bar {
+        min-width: 8px;
+        background: var(--blue);
+        border-radius: 3px 3px 0 0;
+      }
+      .scroll-table { max-height: 420px; overflow: auto; }
+      .toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+      @media (max-width: 980px) {
+        main { grid-template-columns: 1fr; }
+        .grid-2, .reports { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useEffect, useMemo, useRef, useState } = React;
+
+      const money = (value) => Number(value || 0).toLocaleString(undefined, {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2
+      });
+      const number = (value) => Number(value || 0).toLocaleString(undefined, {
+        maximumFractionDigits: 4
+      });
+      const statusClass = (status) => `status-pill status-${status || "queued"}`;
+
+      function App() {
+        const today = new Date().toISOString().slice(0, 10);
+        const [tab, setTab] = useState("live");
+        const [form, setForm] = useState({
+          ticker: "SPY",
+          analysis_date: today,
+          analysts: ["market", "social", "news", "fundamentals"],
+          research_depth: 1,
+          llm_provider: "openai",
+          shallow_thinker: "gpt-5.4-mini",
+          deep_thinker: "gpt-5.4",
+          output_language: "English"
+        });
+        const [run, setRun] = useState(null);
+        const [runs, setRuns] = useState([]);
+        const [portfolio, setPortfolio] = useState(null);
+        const [portfolioHistory, setPortfolioHistory] = useState(null);
+        const [automationConfig, setAutomationConfig] = useState(null);
+        const [automationHistory, setAutomationHistory] = useState([]);
+        const [openaiCosts, setOpenaiCosts] = useState(null);
+        const [error, setError] = useState("");
+        const sourceRef = useRef(null);
+
+        useEffect(() => {
+          refreshRuns();
+          refreshPortfolio();
+          refreshPortfolioHistory();
+          refreshAutomation();
+          refreshCosts();
+          return () => sourceRef.current?.close();
+        }, []);
+
+        const active = run && !["completed", "error", "cancelled"].includes(run.status);
+
+        async function refreshRuns() {
+          const res = await fetch("/api/runs");
+          const data = await res.json();
+          setRuns(data.runs || []);
+        }
+
+        async function refreshPortfolio() {
+          const res = await fetch("/api/portfolio");
+          setPortfolio(await res.json());
+        }
+
+        async function refreshPortfolioHistory() {
+          const res = await fetch("/api/portfolio/history");
+          setPortfolioHistory(await res.json());
+        }
+
+        async function refreshAutomation() {
+          const [configRes, historyRes] = await Promise.all([
+            fetch("/api/automation/config"),
+            fetch("/api/automation/history")
+          ]);
+          if (configRes.ok) setAutomationConfig(await configRes.json());
+          if (historyRes.ok) setAutomationHistory((await historyRes.json()).jobs || []);
+        }
+
+        async function refreshCosts() {
+          const res = await fetch("/api/costs/openai");
+          if (res.ok) setOpenaiCosts(await res.json());
+        }
+
+        async function startRun(event) {
+          event.preventDefault();
+          setError("");
+          sourceRef.current?.close();
+          const res = await fetch("/api/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(form)
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            setError(body.detail || "Could not start run");
+            return;
+          }
+          const next = await res.json();
+          setRun(next);
+          attachEvents(next.run_id);
+          refreshRuns();
+        }
+
+        async function cancelRun() {
+          if (!run) return;
+          await fetch(`/api/runs/${run.run_id}/cancel`, { method: "POST" });
+        }
+
+        function attachEvents(runId) {
+          const source = new EventSource(`/api/runs/${runId}/events`);
+          sourceRef.current = source;
+          source.onmessage = () => {};
+          [
+            "run_started", "message", "tool_call", "agent_status", "report_section",
+            "stats", "decision", "position_update", "pnl_update", "run_completed", "run_error"
+          ].forEach((type) => {
+            source.addEventListener(type, async (event) => {
+              const res = await fetch(`/api/runs/${runId}`);
+              if (res.ok) setRun(await res.json());
+              if (["position_update", "pnl_update", "run_completed"].includes(type)) {
+                refreshPortfolio();
+                refreshPortfolioHistory();
+                refreshRuns();
+              }
+              if (["run_completed", "run_error"].includes(type)) source.close();
+            });
+          });
+        }
+
+        function toggleAnalyst(name) {
+          const exists = form.analysts.includes(name);
+          const analysts = exists
+            ? form.analysts.filter((item) => item !== name)
+            : [...form.analysts, name];
+          setForm({ ...form, analysts });
+        }
+
+        return (
+          <>
+            <header>
+              <h1>TradingAgents Live Dashboard</h1>
+              <div className="tabs">
+                {[
+                  ["live", "Live Runs"],
+                  ["portfolio", "Paper Portfolio"],
+                  ["automation", "Automation"],
+                  ["history", "Analysis History"],
+                  ["costs", "OpenAI Spend"]
+                ].map(([key, label]) => (
+                  <button key={key} className={`tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
+                ))}
+                <span className={statusClass(run?.status)}>{run?.status || "idle"}</span>
+              </div>
+            </header>
+            {tab === "live" && (
+              <main>
+                <aside className="sidebar">
+                  <RunLauncher form={form} setForm={setForm} today={today} active={active} error={error} startRun={startRun} cancelRun={cancelRun} toggleAnalyst={toggleAnalyst} />
+                  <Portfolio portfolio={portfolio} />
+                  <RecentRuns runs={runs} />
+                </aside>
+                <section className="content">
+                  <RunMetrics run={run} portfolio={portfolio} />
+                  <div className="grid-2">
+                    <AgentStatus run={run} />
+                    <LiveFeed run={run} />
+                  </div>
+                  <Reports run={run} />
+                </section>
+              </main>
+            )}
+            {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
+            {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
+            {tab === "history" && <AnalysisHistory runs={runs} />}
+            {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
+          </>
+        );
+      }
+
+      function RunLauncher({ form, setForm, today, active, error, startRun, cancelRun, toggleAnalyst }) {
+        return (
+          <section className="panel">
+            <h2>New Run</h2>
+            <form onSubmit={startRun}>
+              <div className="grid-2">
+                <div className="field"><label>Ticker</label><input value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })} /></div>
+                <div className="field"><label>Date</label><input type="date" value={form.analysis_date} max={today} onChange={(e) => setForm({ ...form, analysis_date: e.target.value })} /></div>
+              </div>
+              <div className="field">
+                <label>Analysts</label>
+                <div className="checks">
+                  {["market", "social", "news", "fundamentals"].map((name) => (
+                    <label key={name}><input type="checkbox" checked={form.analysts.includes(name)} onChange={() => toggleAnalyst(name)} />{name}</label>
+                  ))}
+                </div>
+              </div>
+              <div className="grid-2">
+                <div className="field"><label>Depth</label><select value={form.research_depth} onChange={(e) => setForm({ ...form, research_depth: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
+                <div className="field"><label>Provider</label><select value={form.llm_provider} onChange={(e) => setForm({ ...form, llm_provider: e.target.value })}>{["openai", "google", "anthropic", "xai", "deepseek", "qwen", "glm", "openrouter", "ollama"].map((p) => <option key={p}>{p}</option>)}</select></div>
+              </div>
+              <div className="field"><label>Quick model</label><input value={form.shallow_thinker} onChange={(e) => setForm({ ...form, shallow_thinker: e.target.value })} /></div>
+              <div className="field"><label>Deep model</label><input value={form.deep_thinker} onChange={(e) => setForm({ ...form, deep_thinker: e.target.value })} /></div>
+              <div className="actions">
+                <button className="primary" type="submit" disabled={active || form.analysts.length === 0}>Start</button>
+                <button className="danger" type="button" disabled={!active} onClick={cancelRun}>Cancel</button>
+              </div>
+              {error && <p className="neg">{error}</p>}
+            </form>
+          </section>
+        );
+      }
+
+      function RecentRuns({ runs }) {
+        return (
+          <section className="panel">
+            <h2>Recent Runs</h2>
+            <div className="agent-list">
+              {runs.slice(0, 8).map((item) => (
+                <div className="agent" key={item.run_id}>
+                  <span>{item.request.ticker} <span className="muted">{item.request.analysis_date}</span></span>
+                  <span className={statusClass(item.status)}>{item.status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function RunMetrics({ run, portfolio }) {
+        const stats = run?.stats || {};
+        return (
+          <section className="grid-3">
+            <div className="metric"><span>Decision</span><strong>{run?.decision || "--"}</strong></div>
+            <div className="metric"><span>LLM / Tool calls</span><strong>{stats.llm_calls || 0} / {stats.tool_calls || 0}</strong></div>
+            <div className="metric"><span>Total P&L</span><strong className={(portfolio?.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(portfolio?.total_pnl)}</strong></div>
+          </section>
+        );
+      }
+
+      function AgentStatus({ run }) {
+        const agents = Object.entries(run?.agent_status || {});
+        return (
+          <section className="panel">
+            <h2>Agents</h2>
+            <div className="agent-list">
+              {agents.length === 0 && <p className="muted">No active run.</p>}
+              {agents.map(([name, status]) => (
+                <div className="agent" key={name}>
+                  <span>{name}</span>
+                  <span className={statusClass(status)}>{status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function LiveFeed({ run }) {
+        const items = useMemo(() => {
+          const messages = (run?.messages || []).map((item) => ({ ...item, kind: item.type }));
+          const tools = (run?.tool_calls || []).map((item) => ({ time: item.time, kind: "Tool", content: `${item.name} ${JSON.stringify(item.args || {})}` }));
+          return [...messages, ...tools].slice(-80).reverse();
+        }, [run]);
+        return (
+          <section className="panel">
+            <h2>Live Stream</h2>
+            <div className="feed">
+              {items.length === 0 && <p className="muted">Waiting for events.</p>}
+              {items.map((item, index) => (
+                <div className="event" key={`${item.time}-${index}`}>
+                  <small>{item.time} · {item.kind}</small>
+                  <div>{item.content}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function Reports({ run }) {
+        const reports = run?.report_sections || {};
+        const labels = {
+          market_report: "Market",
+          sentiment_report: "Sentiment",
+          news_report: "News",
+          fundamentals_report: "Fundamentals",
+          investment_plan: "Research",
+          trader_investment_plan: "Trader",
+          final_trade_decision: "Portfolio"
+        };
+        return (
+          <section className="panel">
+            <h2>Reports</h2>
+            <div className="reports">
+              {Object.entries(labels).map(([key, label]) => (
+                <div className="report" key={key}>
+                  <strong>{label}</strong>
+                  <div>{reports[key] || "\nNo content yet."}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      }
+
+      function Portfolio({ portfolio }) {
+        const positions = Object.entries(portfolio?.positions || {});
+        return (
+          <section className="panel">
+            <h2>Paper Portfolio</h2>
+            <div className="grid-2">
+              <div className="metric"><span>Cash</span><strong>{money(portfolio?.cash)}</strong></div>
+              <div className="metric"><span>Equity</span><strong>{money(portfolio?.equity)}</strong></div>
+            </div>
+            <table>
+              <thead>
+                <tr><th>Ticker</th><th>Qty</th><th>Value</th><th>Unrealized</th></tr>
+              </thead>
+              <tbody>
+                {positions.length === 0 && <tr><td colSpan="4" className="muted">No positions.</td></tr>}
+                {positions.map(([ticker, pos]) => (
+                  <tr key={ticker}>
+                    <td>{ticker}</td>
+                    <td>{number(pos.quantity)}</td>
+                    <td>{money(pos.market_value)}</td>
+                    <td className={(pos.unrealized_pnl || 0) >= 0 ? "pos" : "neg"}>{money(pos.unrealized_pnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        );
+      }
+
+      function PortfolioDashboard({ portfolio, data }) {
+        const history = data?.history || [];
+        const trades = data?.trades || [];
+        const performance = data?.performance || {};
+        const equities = history.map((item) => Number(item.equity || 0));
+        const min = Math.min(...equities, Number(portfolio?.equity || 0));
+        const max = Math.max(...equities, Number(portfolio?.equity || 0));
+        return (
+          <main className="wide-main">
+            <section className="content">
+              <div className="grid-3">
+                <div className="metric"><span>Equity</span><strong>{money(portfolio?.equity)}</strong></div>
+                <div className="metric"><span>Market Value</span><strong>{money(portfolio?.market_value)}</strong></div>
+                <div className="metric"><span>Max Drawdown</span><strong className="neg">{((performance.max_drawdown || 0) * 100).toFixed(2)}%</strong></div>
+              </div>
+              <section className="panel">
+                <h2>Equity Curve</h2>
+                <div className="chart">
+                  {history.length === 0 && <p className="muted">No portfolio snapshots yet.</p>}
+                  {history.map((item) => {
+                    const height = max === min ? 50 : 15 + ((Number(item.equity) - min) / (max - min)) * 150;
+                    return <div className="bar" title={`${item.created_at}: ${money(item.equity)}`} style={{ height: `${height}px` }} key={item.id}></div>;
+                  })}
+                </div>
+              </section>
+              <div className="grid-2">
+                <Portfolio portfolio={portfolio} />
+                <section className="panel">
+                  <h2>Trade Ledger</h2>
+                  <div className="scroll-table">
+                    <table>
+                      <thead><tr><th>Date</th><th>Ticker</th><th>Decision</th><th>Action</th><th>Qty</th><th>Price</th></tr></thead>
+                      <tbody>
+                        {trades.length === 0 && <tr><td colSpan="6" className="muted">No trades recorded.</td></tr>}
+                        {trades.map((trade, index) => (
+                          <tr key={`${trade.run_id}-${index}`}>
+                            <td>{trade.trade_date}</td><td>{trade.ticker}</td><td>{trade.decision}</td><td>{trade.action}</td><td>{number(trade.quantity)}</td><td>{money(trade.price)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </main>
+        );
+      }
+
+      function AutomationDashboard({ config, history, refresh }) {
+        const [draft, setDraft] = useState("");
+        useEffect(() => { if (config) setDraft((config.watchlist || []).join(", ")); }, [config]);
+
+        async function save() {
+          const next = { ...(config || {}), watchlist: draft.split(",").map((item) => item.trim()).filter(Boolean) };
+          await fetch("/api/automation/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
+          refresh();
+        }
+
+        async function runNow() {
+          await fetch("/api/automation/run-now", { method: "POST" });
+          refresh();
+        }
+
+        return (
+          <main className="wide-main">
+            <section className="content">
+              <section className="panel">
+                <div className="toolbar">
+                  <h2>Daily Automation</h2>
+                  <div className="actions"><button onClick={save}>Save</button><button className="primary" onClick={runNow}>Run Now</button></div>
+                </div>
+                <div className="grid-3">
+                  <div className="metric"><span>Schedule</span><strong>Mon-Fri 09:00</strong></div>
+                  <div className="metric"><span>Budget</span><strong>{money(config?.daily_openai_budget_usd || 5)}</strong></div>
+                  <div className="metric"><span>Positions included</span><strong>{config?.include_positions ? "Yes" : "No"}</strong></div>
+                </div>
+                <div className="field"><label>Watchlist</label><input value={draft} onChange={(e) => setDraft(e.target.value)} /></div>
+              </section>
+              <section className="panel">
+                <h2>Automation History</h2>
+                <table>
+                  <thead><tr><th>Date</th><th>Status</th><th>Tickers</th><th>Started</th></tr></thead>
+                  <tbody>
+                    {history.length === 0 && <tr><td colSpan="4" className="muted">No daily jobs yet.</td></tr>}
+                    {history.map((job) => <tr key={job.id}><td>{job.job_date}</td><td>{job.status}</td><td>{(job.tickers || []).join(", ")}</td><td>{job.started_at}</td></tr>)}
+                  </tbody>
+                </table>
+              </section>
+            </section>
+          </main>
+        );
+      }
+
+      function AnalysisHistory({ runs }) {
+        return (
+          <main className="wide-main">
+            <section className="panel">
+              <h2>Analysis History</h2>
+              <div className="scroll-table">
+                <table>
+                  <thead><tr><th>Started</th><th>Ticker</th><th>Date</th><th>Status</th><th>Decision</th><th>Source</th><th>LLM</th><th>Tokens</th></tr></thead>
+                  <tbody>
+                    {runs.length === 0 && <tr><td colSpan="8" className="muted">No analysis history yet.</td></tr>}
+                    {runs.map((item) => (
+                      <tr key={item.run_id}>
+                        <td>{item.started_at}</td><td>{item.request.ticker}</td><td>{item.request.analysis_date}</td><td>{item.status}</td><td>{item.decision || "--"}</td><td>{item.source || "manual"}</td><td>{item.stats?.llm_calls || 0}</td><td>{(item.stats?.tokens_in || 0) + (item.stats?.tokens_out || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </main>
+        );
+      }
+
+      function CostsDashboard({ data, refresh }) {
+        const costs = data?.costs || [];
+        return (
+          <main className="wide-main">
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>OpenAI Cost Source</span><strong>{data?.configured ? "Costs API" : "Not configured"}</strong></div>
+                <div className="metric"><span>Total Loaded</span><strong>{money(data?.total)}</strong></div>
+                <div className="metric"><span>Rows</span><strong>{costs.length}</strong></div>
+              </section>
+              {data?.error && <section className="panel"><p className="neg">{data.error}</p></section>}
+              {!data?.configured && <section className="panel"><p className="muted">Set OPENAI_ADMIN_KEY in the dashboard env file to load official invoice-aligned costs.</p></section>}
+              <section className="panel">
+                <div className="toolbar"><h2>OpenAI Spend</h2><button onClick={refresh}>Refresh</button></div>
+                <table>
+                  <thead><tr><th>Start</th><th>End</th><th>Amount</th><th>Currency</th><th>Line Item</th><th>Project</th></tr></thead>
+                  <tbody>
+                    {costs.length === 0 && <tr><td colSpan="6" className="muted">No cost data loaded.</td></tr>}
+                    {costs.map((cost, index) => (
+                      <tr key={index}><td>{new Date(cost.start_time * 1000).toISOString().slice(0, 10)}</td><td>{new Date(cost.end_time * 1000).toISOString().slice(0, 10)}</td><td>{money(cost.amount)}</td><td>{cost.currency}</td><td>{cost.line_item || "--"}</td><td>{cost.project_id || "--"}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            </section>
+          </main>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
