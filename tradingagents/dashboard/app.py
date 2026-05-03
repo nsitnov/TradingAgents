@@ -14,6 +14,7 @@ from tradingagents.dashboard.automation import (
     run_daily_once,
     save_automation_config,
 )
+from tradingagents.dashboard.brokers import BrokerError, broker_config_from_env, broker_from_env
 from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
@@ -182,6 +183,36 @@ def risk_decisions(limit: int = Query(default=100, ge=1, le=500)):
 @app.get("/api/audit/events")
 def audit_events(limit: int = Query(default=100, ge=1, le=500)):
     return {"audit_events": storage.audit_events(limit=limit)}
+
+
+@app.get("/api/broker/config")
+def broker_config():
+    return broker_config_from_env()
+
+
+@app.get("/api/broker/positions")
+def broker_positions():
+    try:
+        broker = broker_from_env()
+        if not broker:
+            return {"broker": "paper_ledger", "positions": []}
+        return {"broker": broker.name, "positions": broker.get_positions()}
+    except BrokerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/broker/orders")
+def broker_orders(
+    status: str = Query(default="all"),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    try:
+        broker = broker_from_env()
+        if not broker:
+            return {"broker": "paper_ledger", "orders": []}
+        return {"broker": broker.name, "orders": broker.get_orders(status=status, limit=limit)}
+    except BrokerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/automation/config")

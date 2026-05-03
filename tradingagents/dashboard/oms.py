@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from tradingagents.dashboard.brokers import BrokerAdapter, broker_from_env
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.storage import DashboardStorage, now_iso
 
@@ -179,11 +180,13 @@ class PaperOrderService:
         ledger: PaperLedger,
         storage: DashboardStorage,
         risk_config: Optional[RiskConfig] = None,
+        broker: Optional[BrokerAdapter] = None,
     ) -> None:
         self.ledger = ledger
         self.storage = storage
         self.risk_config = risk_config or RiskConfig.from_env()
         self.risk_engine = RiskEngine(storage, self.risk_config)
+        self.broker = broker if broker is not None else broker_from_env()
 
     def submit_decision(self, intent: OrderIntent) -> Dict[str, Any]:
         existing = self.storage.order_by_idempotency_key(intent.idempotency_key)
@@ -241,6 +244,8 @@ class PaperOrderService:
             )
             return {"order": order, "risk": risk, "portfolio": portfolio}
 
+        if self.broker:
+            return self.submit_broker_order(order, risk=risk)
         return self.execute_order(order, risk=risk)
 
     def approve_order(self, order_id: str) -> Dict[str, Any]:
@@ -259,7 +264,48 @@ class PaperOrderService:
             order["updated_at"] = now_iso()
             self.storage.upsert_order(order)
             return {"order": order, "risk": risk, "portfolio": self.ledger.snapshot()}
+        if self.broker:
+            return self.submit_broker_order(order, risk=risk)
         return self.execute_order(order, risk=risk)
+
+    def submit_broker_order(
+        self, order: Dict[str, Any], risk: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        if not self.broker:
+            raise ValueError("No broker is configured")
+        order["status"] = "submitted"
+        order["updated_at"] = now_iso()
+        self.storage.upsert_order(order)
+        self.storage.insert_audit_event(
+            "broker_order_submitted",
+            "order",
+            order["order_id"],
+            order["run_id"],
+            {"broker": self.broker.name, "order": order},
+        )
+
+        broker_order = self.broker.submit_order(order)
+        order["status"] = _broker_order_status(broker_order)
+        order["broker"] = self.broker.name
+        order["broker_order_id"] = broker_order.get("id") or broker_order.get("order_id", "")
+        order["broker_order"] = broker_order
+        order["updated_at"] = now_iso()
+
+        fill = _fill_from_broker_order(order, broker_order)
+        if fill:
+            self.storage.insert_fill(fill)
+            order["quantity"] = fill["quantity"]
+            order["estimated_price"] = fill["price"]
+            order["estimated_notional"] = fill["notional"]
+        self.storage.upsert_order(order)
+        self.storage.insert_audit_event(
+            "broker_order_updated",
+            "order",
+            order["order_id"],
+            order["run_id"],
+            {"broker": self.broker.name, "broker_order": broker_order},
+        )
+        return {"order": order, "risk": risk, "portfolio": self.ledger.snapshot()}
 
     def reject_order(self, order_id: str, reason: str = "Rejected manually") -> Dict[str, Any]:
         order = self.storage.order_detail(order_id)
@@ -353,6 +399,40 @@ def _latest_trade_for_order(
         ):
             return trade
     return None
+
+
+def _broker_order_status(broker_order: Dict[str, Any]) -> str:
+    status = str(broker_order.get("status", "submitted")).lower()
+    if status == "filled":
+        return "filled"
+    if status in {"canceled", "expired", "rejected"}:
+        return status
+    return "broker_submitted"
+
+
+def _fill_from_broker_order(
+    order: Dict[str, Any], broker_order: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    if str(broker_order.get("status", "")).lower() != "filled":
+        return None
+    quantity = float(broker_order.get("filled_qty") or order.get("quantity", 0.0))
+    price = float(
+        broker_order.get("filled_avg_price")
+        or broker_order.get("limit_price")
+        or order.get("estimated_price", 0.0)
+    )
+    return {
+        "fill_id": str(uuid.uuid4()),
+        "order_id": order["order_id"],
+        "run_id": order["run_id"],
+        "ticker": order["ticker"],
+        "action": order["action"],
+        "quantity": quantity,
+        "price": price,
+        "notional": quantity * price,
+        "created_at": broker_order.get("filled_at") or now_iso(),
+        "trade": {"broker_order": broker_order},
+    }
 
 
 def _rejection_reason(checks: List[Dict[str, Any]]) -> str:

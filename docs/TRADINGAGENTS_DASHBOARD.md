@@ -243,6 +243,18 @@ TRADINGAGENTS_DAILY_LOSS_LIMIT=5000
 TRADINGAGENTS_FORBIDDEN_TICKERS=""
 ```
 
+Broker env променливи:
+
+```bash
+TRADINGAGENTS_BROKER=paper_ledger     # default local PaperLedger execution
+TRADINGAGENTS_BROKER=alpaca_paper     # Alpaca paper API, no real-money path
+ALPACA_API_KEY_ID=...
+ALPACA_API_SECRET_KEY=...
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
+```
+
+`alpaca_paper` използва Alpaca paper Trading API за market/day buy/sell orders и не е enabled по подразбиране.
+
 SQLite вече пази:
 
 - orders
@@ -260,6 +272,9 @@ POST /api/orders/{order_id}/reject
 GET /api/risk/config
 GET /api/risk/decisions
 GET /api/audit/events
+GET /api/broker/config
+GET /api/broker/positions
+GET /api/broker/orders
 ```
 
 ## Daily Automation
@@ -420,6 +435,9 @@ POST /api/orders/{order_id}/reject
 GET /api/risk/config
 GET /api/risk/decisions
 GET /api/audit/events
+GET /api/broker/config
+GET /api/broker/positions
+GET /api/broker/orders
 ```
 
 Automation:

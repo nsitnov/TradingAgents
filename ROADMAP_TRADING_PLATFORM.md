@@ -341,7 +341,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 1. **Веднага днес**: Commit-ни този roadmap в repo-то, защото в момента е жив документ извън Git history.
 2. **Тази седмица**: Имплементирай Paper OMS + hard risk gates + audit trail върху текущия dashboard/SQLite stack.
 3. **След това**: Регистрирай Alpaca paper account и Polygon.io free tier — 0 пари, 0 риск.
-4. **Следваща седмица**: Дефинирай `BrokerAdapter` interface и имплементирай `AlpacaBroker.submit_order()` + `get_positions()` като втори adapter след `PaperBroker`.
+4. **Следваща седмица**: Дефинирай `BrokerAdapter` interface и имплементирай `AlpacaBroker.submit_order()` + `get_positions()` като втори adapter след `PaperBroker`. **Статус: базовият Alpaca paper adapter е добавен; остава реална account конфигурация и reconciliation worker.**
 5. **Седмица 3**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
 
 ---
