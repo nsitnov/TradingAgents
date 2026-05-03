@@ -2,7 +2,11 @@ import base64
 
 from fastapi.testclient import TestClient
 
-from tradingagents.dashboard.app import app
+import tradingagents.dashboard.app as dashboard_app
+from tradingagents.dashboard.storage import DashboardStorage
+
+
+app = dashboard_app.app
 
 
 def _auth_header(username: str, password: str) -> dict[str, str]:
@@ -44,3 +48,50 @@ def test_order_risk_and_audit_endpoints_are_available(monkeypatch):
     assert broker_config["execution_enabled"] is False
     assert "positions" in client.get("/api/broker/positions").json()
     assert "orders" in client.get("/api/broker/orders").json()
+
+
+def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+    storage = DashboardStorage(
+        db_path=tmp_path / "dashboard.sqlite3",
+        analyses_dir=tmp_path / "analyses",
+    )
+    monkeypatch.setattr(dashboard_app, "storage", storage)
+
+    class StubBacktestEngine:
+        def __init__(self, config):
+            self.config = config
+
+        def run(self):
+            return {
+                "backtest_id": "bt-api-1",
+                "status": "completed",
+                "started_at": "2026-01-05T08:00:00+00:00",
+                "ended_at": "2026-01-05T08:00:01+00:00",
+                "config": self.config.as_dict(),
+                "summary": {"trade_count": 0, "total_pnl": 0.0},
+                "performance": {},
+                "history": [],
+                "trades": [],
+            }
+
+    monkeypatch.setattr(dashboard_app, "BacktestEngine", StubBacktestEngine)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/backtests",
+        json={
+            "tickers": ["SPY"],
+            "start": "2026-01-02",
+            "end": "2026-01-05",
+            "fixed_decision": "Hold",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["backtest_id"] == "bt-api-1"
+    assert client.get("/api/backtests").json()["backtests"][0]["backtest_id"] == "bt-api-1"
+    assert (
+        client.get("/api/backtests/bt-api-1").json()["result"]["summary"]["trade_count"]
+        == 0
+    )

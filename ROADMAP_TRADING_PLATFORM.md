@@ -33,7 +33,7 @@
 | Daily automation | Готов | Watchlist + positions, OpenAI budget guard |
 | Upstream sync | Готов | Fork + weekly upstream PR workflow |
 | Docker | Готов | Single-shot run |
-| Backtesting | Минимално | Date-fidelity, но няма walk-forward, Monte Carlo, transaction cost модел |
+| Backtesting | MVP готов | Isolated replay engine, transaction cost модел, benchmark comparison, SQLite/API history; остава walk-forward/Monte Carlo |
 | **Execution / OMS** | **Paper-ready** | Local PaperLedger execution, orders/fills/risk/audit |
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
@@ -133,6 +133,20 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 - **Метрики**: Sharpe, Sortino, Calmar, max DD, win rate, profit factor, average R:R, time in market
 - **Benchmark comparison**: SPY (stocks), BTC (crypto), 60/40
 - **Stress tests**: 2008, 2020-03, 2022 bear, COVID flash crash
+
+### 5.1 Имплементирано в текущия fork
+- Isolated `BacktestEngine`, който не mutate-ва live PaperLedger-а.
+- `fixed` decision replay за бързи smoke/backtest проверки.
+- `tradingagents` decision provider, който може да пуска оригиналния `TradingAgentsGraph.propagate()` за historical replay.
+- Transaction cost модел: spread, slippage, fee bps и fixed fee.
+- SQLite persistence + API:
+  - `POST /api/backtests`
+  - `GET /api/backtests`
+  - `GET /api/backtests/{backtest_id}`
+- CLI:
+  - `python -m tradingagents.dashboard.backtest --tickers SPY,QQQ --start YYYY-MM-DD --end YYYY-MM-DD`
+
+Остава за research-grade validation: walk-forward windows, Monte Carlo/bootstrap, stress-period presets и по-строга timezone защита срещу lookahead bias.
 
 ---
 
@@ -318,9 +332,9 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 ## 11. Препоръчан 90-дневен roadmap
 
 ### Месец 1 — Foundation
-- Седмица 1: Paper OMS, normalized orders/fills, hard risk gates, audit log, manual approval endpoints.
-- Седмица 2: Alpaca paper adapter върху същия `BrokerAdapter` interface, reconciliation worker, broker-vs-local diff report.
-- Седмица 3: Backtest engine с transaction cost модел; replay 2024-2025 на текущите агенти.
+- Седмица 1: Paper OMS, normalized orders/fills, hard risk gates, audit log, manual approval endpoints. **Готово за local paper execution.**
+- Седмица 2: Alpaca paper adapter върху същия `BrokerAdapter` interface, reconciliation worker, broker-vs-local diff report. **Read/test adapter готов; execution остава изключен.**
+- Седмица 3: Backtest engine с transaction cost модел; replay 2024-2025 на текущите агенти. **MVP engine/API/CLI готов; предстои real agent replay batch.**
 - Седмица 4: Dashboard order/risk/audit UI + Telegram/email alerts for rejected orders and daily loss limit.
 
 ### Месец 2 — Cross-market scanner (твоят use case)
@@ -341,9 +355,10 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 
 1. **Веднага днес**: Commit-ни този roadmap в repo-то, защото в момента е жив документ извън Git history.
 2. **Тази седмица**: Имплементирай Paper OMS + hard risk gates + audit trail върху текущия dashboard/SQLite stack.
-3. **След това**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L, alpha vs SPY/QQQ.
-4. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
-5. **Седмица 3**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
+3. **Готово като MVP**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L, alpha vs SPY/QQQ.
+4. **Следващо**: Пусни batch replay върху 2024-2025 с `tradingagents` provider и отделен cost budget, за да видим реалното agent P&L.
+5. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
+6. **След validation**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
 
 ---
 

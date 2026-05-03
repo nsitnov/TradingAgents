@@ -207,6 +207,7 @@
 
       function App() {
         const today = new Date().toISOString().slice(0, 10);
+        const defaultBacktestStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         const [tab, setTab] = useState("live");
         const [form, setForm] = useState({
           ticker: "SPY",
@@ -225,6 +226,21 @@
         const [automationConfig, setAutomationConfig] = useState(null);
         const [automationHistory, setAutomationHistory] = useState([]);
         const [openaiCosts, setOpenaiCosts] = useState(null);
+        const [backtestForm, setBacktestForm] = useState({
+          tickers: "SPY",
+          start: defaultBacktestStart,
+          end: today,
+          initial_cash: 100000,
+          fixed_decision: "Hold",
+          spread_bps: 5,
+          slippage_bps: 5,
+          fee_bps: 0,
+          fixed_fee: 0
+        });
+        const [backtests, setBacktests] = useState([]);
+        const [selectedBacktest, setSelectedBacktest] = useState(null);
+        const [backtestLoading, setBacktestLoading] = useState(false);
+        const [backtestError, setBacktestError] = useState("");
         const [error, setError] = useState("");
         const sourceRef = useRef(null);
 
@@ -234,6 +250,7 @@
           refreshPortfolioHistory();
           refreshAutomation();
           refreshCosts();
+          refreshBacktests();
           return () => sourceRef.current?.close();
         }, []);
 
@@ -267,6 +284,52 @@
         async function refreshCosts() {
           const res = await fetch("/api/costs/openai");
           if (res.ok) setOpenaiCosts(await res.json());
+        }
+
+        async function refreshBacktests() {
+          const res = await fetch("/api/backtests");
+          if (res.ok) setBacktests((await res.json()).backtests || []);
+        }
+
+        async function runBacktest(event) {
+          event.preventDefault();
+          setBacktestError("");
+          setBacktestLoading(true);
+          const payload = {
+            tickers: backtestForm.tickers.split(",").map((item) => item.trim()).filter(Boolean),
+            start: backtestForm.start,
+            end: backtestForm.end,
+            initial_cash: Number(backtestForm.initial_cash || 100000),
+            decision_provider: "fixed",
+            fixed_decision: backtestForm.fixed_decision,
+            transaction_costs: {
+              spread_bps: Number(backtestForm.spread_bps || 0),
+              slippage_bps: Number(backtestForm.slippage_bps || 0),
+              fee_bps: Number(backtestForm.fee_bps || 0),
+              fixed_fee: Number(backtestForm.fixed_fee || 0)
+            }
+          };
+          try {
+            const res = await fetch("/api/backtests", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setBacktestError(body.detail || "Could not run backtest");
+              return;
+            }
+            setSelectedBacktest({ result: body });
+            refreshBacktests();
+          } finally {
+            setBacktestLoading(false);
+          }
+        }
+
+        async function openBacktest(backtestId) {
+          const res = await fetch(`/api/backtests/${backtestId}`);
+          if (res.ok) setSelectedBacktest(await res.json());
         }
 
         async function startRun(event) {
@@ -331,6 +394,7 @@
                 {[
                   ["live", "Live Runs"],
                   ["portfolio", "Paper Portfolio"],
+                  ["backtests", "Backtests"],
                   ["automation", "Automation"],
                   ["history", "Analysis History"],
                   ["costs", "OpenAI Spend"]
@@ -358,6 +422,7 @@
               </main>
             )}
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
+            {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -593,6 +658,109 @@
                           <tr key={`${trade.run_id}-${index}`}>
                             <td>{trade.trade_date}</td><td>{trade.ticker}</td><td>{trade.decision}</td><td>{trade.action}</td><td>{number(trade.quantity)}</td><td>{money(trade.price)}</td>
                           </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </main>
+        );
+      }
+
+      function BacktestsDashboard({ form, setForm, backtests, selected, loading, error, runBacktest, openBacktest }) {
+        const result = selected?.result || {};
+        const summary = result.summary || selected?.summary || {};
+        const performance = result.performance || {};
+        const trades = result.trades || [];
+        const history = result.history || [];
+        const benchmarks = performance.benchmarks || [];
+        const equities = history.map((item) => Number(item.equity || 0));
+        const min = equities.length ? Math.min(...equities) : 0;
+        const max = equities.length ? Math.max(...equities) : 0;
+        return (
+          <main>
+            <aside className="sidebar">
+              <section className="panel">
+                <h2>New Backtest</h2>
+                <form onSubmit={runBacktest}>
+                  <div className="field"><label>Tickers</label><input value={form.tickers} onChange={(e) => setForm({ ...form, tickers: e.target.value.toUpperCase() })} /></div>
+                  <div className="grid-2">
+                    <div className="field"><label>Start</label><input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></div>
+                    <div className="field"><label>End</label><input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field"><label>Initial Cash</label><input type="number" min="1" value={form.initial_cash} onChange={(e) => setForm({ ...form, initial_cash: e.target.value })} /></div>
+                    <div className="field"><label>Decision</label><select value={form.fixed_decision} onChange={(e) => setForm({ ...form, fixed_decision: e.target.value })}>{["Hold", "Buy", "Overweight", "Underweight", "Sell"].map((item) => <option key={item}>{item}</option>)}</select></div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field"><label>Spread bps</label><input type="number" min="0" step="0.1" value={form.spread_bps} onChange={(e) => setForm({ ...form, spread_bps: e.target.value })} /></div>
+                    <div className="field"><label>Slippage bps</label><input type="number" min="0" step="0.1" value={form.slippage_bps} onChange={(e) => setForm({ ...form, slippage_bps: e.target.value })} /></div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field"><label>Fee bps</label><input type="number" min="0" step="0.1" value={form.fee_bps} onChange={(e) => setForm({ ...form, fee_bps: e.target.value })} /></div>
+                    <div className="field"><label>Fixed fee</label><input type="number" min="0" step="0.01" value={form.fixed_fee} onChange={(e) => setForm({ ...form, fixed_fee: e.target.value })} /></div>
+                  </div>
+                  <button className="primary" type="submit" disabled={loading}>{loading ? "Running" : "Run Backtest"}</button>
+                  {error && <p className="neg">{error}</p>}
+                </form>
+              </section>
+              <section className="panel">
+                <h2>Backtest History</h2>
+                <div className="agent-list">
+                  {backtests.length === 0 && <p className="muted">No backtests yet.</p>}
+                  {backtests.map((item) => (
+                    <button key={item.backtest_id} onClick={() => openBacktest(item.backtest_id)}>
+                      {(item.summary?.tickers || item.config?.tickers || []).join(", ") || "Backtest"} · {((item.summary?.total_return_pct || 0) * 100).toFixed(2)}%
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </aside>
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>End Equity</span><strong>{money(summary.end_equity)}</strong></div>
+                <div className="metric"><span>Total P&L</span><strong className={(summary.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(summary.total_pnl)}</strong></div>
+                <div className="metric"><span>Total Return</span><strong className={(summary.total_return_pct || 0) >= 0 ? "pos" : "neg"}>{((summary.total_return_pct || 0) * 100).toFixed(2)}%</strong></div>
+              </section>
+              <section className="grid-3">
+                <div className="metric"><span>Trades</span><strong>{summary.trade_count || 0}</strong></div>
+                <div className="metric"><span>Max Drawdown</span><strong className="neg">{((summary.max_drawdown || 0) * 100).toFixed(2)}%</strong></div>
+                <div className="metric"><span>Skipped</span><strong>{summary.skipped_count || 0}</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Backtest Equity Curve</h2>
+                <div className="chart">
+                  {history.length === 0 && <p className="muted">No selected backtest.</p>}
+                  {history.map((item, index) => {
+                    const height = max === min ? 50 : 15 + ((Number(item.equity) - min) / (max - min)) * 150;
+                    return <div className="bar" title={`${item.created_at}: ${money(item.equity)}`} style={{ height: `${height}px` }} key={`${item.created_at}-${index}`}></div>;
+                  })}
+                </div>
+              </section>
+              <div className="grid-2">
+                <section className="panel">
+                  <h2>Benchmarks</h2>
+                  <table>
+                    <thead><tr><th>Ticker</th><th>Return</th><th>Alpha</th></tr></thead>
+                    <tbody>
+                      {benchmarks.length === 0 && <tr><td colSpan="3" className="muted">No benchmark rows.</td></tr>}
+                      {benchmarks.map((item) => (
+                        <tr key={item.ticker}><td>{item.ticker}</td><td className={(item.return_pct || 0) >= 0 ? "pos" : "neg"}>{((item.return_pct || 0) * 100).toFixed(2)}%</td><td className={(item.alpha_pct || 0) >= 0 ? "pos" : "neg"}>{((item.alpha_pct || 0) * 100).toFixed(2)}%</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+                <section className="panel">
+                  <h2>Backtest Trades</h2>
+                  <div className="scroll-table">
+                    <table>
+                      <thead><tr><th>Date</th><th>Ticker</th><th>Action</th><th>Qty</th><th>Price</th></tr></thead>
+                      <tbody>
+                        {trades.length === 0 && <tr><td colSpan="5" className="muted">No trades.</td></tr>}
+                        {trades.slice(-100).reverse().map((trade, index) => (
+                          <tr key={`${trade.trade_date}-${trade.ticker}-${index}`}><td>{trade.trade_date}</td><td>{trade.ticker}</td><td>{trade.action}</td><td>{number(trade.quantity)}</td><td>{money(trade.price)}</td></tr>
                         ))}
                       </tbody>
                     </table>

@@ -267,6 +267,7 @@ SQLite вече пази:
 - fills
 - risk decisions
 - audit events
+- backtests
 
 Основни API endpoints:
 
@@ -281,6 +282,43 @@ GET /api/audit/events
 GET /api/broker/config
 GET /api/broker/positions
 GET /api/broker/orders
+```
+
+## Backtest / Replay Engine
+
+Dashboard-ът има isolated replay engine за paper-only validation. Той не пише в live PaperLedger-а и не изпраща broker orders. Идеята е да измерим дали агентските решения имат edge преди да мислим за реална търговия.
+
+Поддържани режими:
+
+- `fixed` decision provider за бърз smoke test (`Buy`, `Sell`, `Hold`, `Overweight`, `Underweight`)
+- `tradingagents` decision provider, който пуска оригиналния `TradingAgentsGraph.propagate()` за всяка дата и тикер
+
+Replay engine-ът използва:
+
+- historical close prices от `yfinance`
+- същата базова sizing семантика като PaperLedger (`Buy` = 20% cash, `Overweight` = 10%, `Underweight` = sell 50%, `Sell` = sell all)
+- transaction cost модел: spread bps, slippage bps, fee bps и fixed fee
+- performance метрики от dashboard-а плюс benchmark comparison срещу SPY/QQQ или избран benchmark списък
+
+CLI пример:
+
+```bash
+python -m tradingagents.dashboard.backtest \
+  --tickers SPY,QQQ \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --decision-provider fixed \
+  --fixed-decision Buy \
+  --spread-bps 5 \
+  --slippage-bps 5
+```
+
+API endpoints:
+
+```text
+POST /api/backtests
+GET /api/backtests
+GET /api/backtests/{backtest_id}
 ```
 
 ## Daily Automation
@@ -429,6 +467,14 @@ GET /api/portfolio
 GET /api/portfolio/history
 GET /api/portfolio/trades
 GET /api/portfolio/performance
+```
+
+Backtests:
+
+```text
+POST /api/backtests
+GET /api/backtests
+GET /api/backtests/{backtest_id}
 ```
 
 Orders / Risk / Audit:

@@ -14,6 +14,7 @@ from tradingagents.dashboard.automation import (
     run_daily_once,
     save_automation_config,
 )
+from tradingagents.dashboard.backtest import BacktestEngine, BacktestRequest
 from tradingagents.dashboard.brokers import BrokerError, broker_config_from_env, broker_from_env
 from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
@@ -141,6 +142,31 @@ def portfolio_trades():
 @app.get("/api/portfolio/performance")
 def portfolio_performance():
     return store.portfolio_history()["performance"]
+
+
+@app.post("/api/backtests")
+def create_backtest(request: BacktestRequest):
+    try:
+        result = BacktestEngine(request.to_config()).run()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    storage.upsert_backtest(result)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error", "Backtest failed"))
+    return result
+
+
+@app.get("/api/backtests")
+def list_backtests(limit: int = Query(default=50, ge=1, le=200)):
+    return {"backtests": storage.backtests(limit=limit)}
+
+
+@app.get("/api/backtests/{backtest_id}")
+def get_backtest(backtest_id: str):
+    result = storage.backtest_detail(backtest_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    return result
 
 
 @app.get("/api/orders")

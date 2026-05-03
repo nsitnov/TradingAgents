@@ -187,6 +187,18 @@ class DashboardStorage:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS backtests (
+                    backtest_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    config_json TEXT NOT NULL,
+                    summary_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    error TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -721,6 +733,56 @@ class DashboardStorage:
             for row in rows
         ]
 
+    def upsert_backtest(self, result: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO backtests (
+                    backtest_id, status, started_at, ended_at, config_json,
+                    summary_json, result_json, error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(backtest_id) DO UPDATE SET
+                    status=excluded.status,
+                    ended_at=excluded.ended_at,
+                    config_json=excluded.config_json,
+                    summary_json=excluded.summary_json,
+                    result_json=excluded.result_json,
+                    error=excluded.error,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    result["backtest_id"],
+                    result.get("status", "unknown"),
+                    result.get("started_at") or now_iso(),
+                    result.get("ended_at"),
+                    _json(result.get("config", {})),
+                    _json(result.get("summary", {})),
+                    _json(result),
+                    result.get("error"),
+                    now_iso(),
+                ),
+            )
+
+    def backtests(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM backtests
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_backtest(row, include_result=False) for row in rows]
+
+    def backtest_detail(self, backtest_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM backtests WHERE backtest_id = ?", (backtest_id,)
+            ).fetchone()
+        return self._row_to_backtest(row, include_result=True) if row else None
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],
@@ -760,6 +822,22 @@ class DashboardStorage:
             }
         )
         return order
+
+    def _row_to_backtest(
+        self, row: sqlite3.Row, *, include_result: bool
+    ) -> Dict[str, Any]:
+        item = {
+            "backtest_id": row["backtest_id"],
+            "status": row["status"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+            "config": _loads(row["config_json"], {}),
+            "summary": _loads(row["summary_json"], {}),
+            "error": row["error"],
+        }
+        if include_result:
+            item["result"] = _loads(row["result_json"], {})
+        return item
 
     def _analysis_dir(self, analysis_date: str, ticker: str, run_id: str) -> Path:
         safe_ticker = "".join(ch for ch in ticker.upper() if ch.isalnum() or ch in ".-_")
