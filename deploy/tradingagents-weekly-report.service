@@ -1,0 +1,14 @@
+[Unit]
+Description=Send TradingAgents weekly paper portfolio report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/nsitnov/tradingagents
+Environment=TRADINGAGENTS_DASHBOARD_ENV=/home/nsitnov/.config/tradingagents-dashboard.env
+EnvironmentFile=-/home/nsitnov/.config/tradingagents-dashboard.env
+ExecStart=/home/nsitnov/tradingagents/.venv/bin/python -m tradingagents.dashboard.weekly_report
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradingagents-weekly-report

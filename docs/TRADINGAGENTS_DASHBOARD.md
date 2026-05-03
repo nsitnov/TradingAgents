@@ -115,6 +115,26 @@ Schedule:
 Mon..Fri 09:00:00 Europe/Sofia
 ```
 
+Weekly portfolio report timer:
+
+```bash
+tradingagents-weekly-report.timer
+tradingagents-weekly-report.service
+```
+
+Инсталират се като user units:
+
+```bash
+/home/nsitnov/.config/systemd/user/tradingagents-weekly-report.timer
+/home/nsitnov/.config/systemd/user/tradingagents-weekly-report.service
+```
+
+Schedule:
+
+```text
+Sun 09:00:00 Europe/Sofia
+```
+
 ## Как работи live monitoring
 
 Когато стартираш analysis от dashboard-а:
@@ -263,6 +283,44 @@ Dashboard tab `OpenAI Spend` показва:
 
 Ако Costs API не работи, daily automation не трябва да харчи автоматично. Guardrail-ът ще маркира job-а като skipped, вместо да пуска run-ове без бюджетен контрол.
 
+## Weekly Portfolio Email Report
+
+Всяка неделя в 09:00 локално време systemd timer-ът изпраща седмичен report за Paper Portfolio през Resend.
+
+Report-ът включва:
+
+- start equity и end equity за седмицата
+- net P&L и процентна промяна
+- gross gains и gross losses по equity curve snapshots
+- realized и unrealized P&L промяна
+- cash, market value и текущи позиции
+- брой buy/sell/hold paper trades и notional за buys/sells
+
+Env променливи в `/home/nsitnov/.config/tradingagents-dashboard.env`:
+
+```bash
+RESEND_API_KEY=...
+TRADINGAGENTS_REPORT_FROM="TradingAgents <reports@your-verified-domain.com>"
+TRADINGAGENTS_REPORT_TO="you@example.com"
+TRADINGAGENTS_REPORT_TIMEZONE=Europe/Sofia
+TRADINGAGENTS_REPORT_SUBJECT_PREFIX="TradingAgents weekly portfolio report"
+```
+
+`TRADINGAGENTS_REPORT_TO` може да съдържа няколко имейла, разделени със запетая.
+
+Ръчен dry run без изпращане:
+
+```bash
+cd /home/nsitnov/tradingagents
+/home/nsitnov/tradingagents/.venv/bin/python -m tradingagents.dashboard.weekly_report --dry-run
+```
+
+Ръчно изпращане:
+
+```bash
+systemctl --user start tradingagents-weekly-report.service
+```
+
 ## Къде се пазят анализите
 
 Пълните анализи се пазят като markdown/json файлове:
@@ -354,6 +412,13 @@ systemctl --user status tradingagents-daily.timer --no-pager
 systemctl --user list-timers --all
 ```
 
+Проверка на weekly report timer:
+
+```bash
+systemctl --user status tradingagents-weekly-report.timer --no-pager
+systemctl --user list-timers --all
+```
+
 Ръчно пускане на daily automation:
 
 ```bash
@@ -365,6 +430,7 @@ systemctl --user start tradingagents-daily.service
 ```bash
 journalctl --user -u tradingagents-dashboard.service -n 100 --no-pager
 journalctl --user -u tradingagents-daily.service -n 100 --no-pager
+journalctl --user -u tradingagents-weekly-report.service -n 100 --no-pager
 journalctl --user -u tradeagents-cloudflared.service -n 100 --no-pager
 ```
 

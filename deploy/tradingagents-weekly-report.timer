@@ -1,0 +1,10 @@
+[Unit]
+Description=Send TradingAgents weekly paper portfolio report every Sunday morning
+
+[Timer]
+OnCalendar=Sun 09:00:00
+Persistent=true
+Unit=tradingagents-weekly-report.service
+
+[Install]
+WantedBy=timers.target
