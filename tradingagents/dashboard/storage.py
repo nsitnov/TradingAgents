@@ -275,6 +275,18 @@ class DashboardStorage:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS autopilot_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    config_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    error TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -536,6 +548,49 @@ class DashboardStorage:
             }
             for row in rows
         ]
+
+    def upsert_autopilot_job(self, job: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO autopilot_jobs (
+                    job_id, job_type, status, started_at, ended_at, config_json,
+                    result_json, error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    job_type=excluded.job_type,
+                    status=excluded.status,
+                    ended_at=excluded.ended_at,
+                    config_json=excluded.config_json,
+                    result_json=excluded.result_json,
+                    error=excluded.error,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    job["job_id"],
+                    job.get("job_type", "run_once"),
+                    job.get("status", "unknown"),
+                    job.get("started_at") or now_iso(),
+                    job.get("ended_at"),
+                    _json(job.get("config", {})),
+                    _json(job.get("result", {})),
+                    job.get("error"),
+                    now_iso(),
+                ),
+            )
+
+    def autopilot_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM autopilot_jobs
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_autopilot_job(row) for row in rows]
 
     def replace_openai_costs(self, costs: List[Dict[str, Any]]) -> None:
         if not costs:
@@ -1223,6 +1278,18 @@ class DashboardStorage:
         if include_result:
             item["result"] = _loads(row["result_json"], {})
         return item
+
+    def _row_to_autopilot_job(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "job_id": row["job_id"],
+            "job_type": row["job_type"],
+            "status": row["status"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+            "config": _loads(row["config_json"], {}),
+            "result": _loads(row["result_json"], {}),
+            "error": row["error"],
+        }
 
     def _row_to_scanner_event(self, row: sqlite3.Row) -> Dict[str, Any]:
         event = _loads(row["event_json"], {})

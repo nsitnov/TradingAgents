@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from tradingagents.dashboard.agent_replay import AgentReplayRequest, AgentReplayService
+from tradingagents.dashboard.autopilot import AutopilotService
 from tradingagents.dashboard.automation import (
     load_automation_config,
     run_daily_once,
@@ -54,6 +55,15 @@ scanner_confluence = ScannerConfluenceReviewer(storage=storage)
 scanner_executor = ScannerPaperExecutor(storage=storage, ledger=ledger)
 scanner_calibration = ScannerCalibrationReporter(storage=storage)
 readiness_reporter = ReadinessReporter(storage=storage)
+autopilot_service = AutopilotService(
+    storage=storage,
+    ledger=ledger,
+    scanner=scanner,
+    confluence=scanner_confluence,
+    executor=scanner_executor,
+    calibration=scanner_calibration,
+    readiness=readiness_reporter,
+)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -348,6 +358,34 @@ def readiness_stability_gate():
 @app.get("/api/readiness/postmortems")
 def readiness_postmortems(limit: int = Query(default=100, ge=1, le=500)):
     return readiness_reporter.trade_postmortems(limit=limit)
+
+
+@app.get("/api/autopilot/config")
+def autopilot_config():
+    return autopilot_service.config()
+
+
+@app.put("/api/autopilot/config")
+def update_autopilot_config(config: dict):
+    return autopilot_service.save_config(config)
+
+
+@app.get("/api/autopilot/status")
+def autopilot_status():
+    return autopilot_service.status()
+
+
+@app.get("/api/autopilot/jobs")
+def autopilot_jobs(limit: int = Query(default=50, ge=1, le=200)):
+    return {"jobs": autopilot_service.jobs(limit=limit)}
+
+
+@app.post("/api/autopilot/run-now")
+def autopilot_run_now():
+    try:
+        return autopilot_service.run_once(job_type="manual_run_now")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/broker/config")

@@ -115,6 +115,19 @@ Schedule:
 Mon..Fri 09:00:00 Europe/Sofia
 ```
 
+Paper autopilot timer:
+
+```bash
+tradingagents-autopilot.timer
+tradingagents-autopilot.service
+```
+
+Schedule:
+
+```text
+Every 30 minutes
+```
+
 Weekly portfolio report timer:
 
 ```bash
@@ -440,6 +453,32 @@ Default config:
 
 Важно: automation е paper-only. Няма реални broker orders.
 
+## Paper Autopilot
+
+Autopilot config:
+
+```bash
+~/.tradingagents/dashboard/autopilot.json
+```
+
+Autopilot-ът е paper-only orchestrator. Той може сам да изпълнява scanner cycle, confluence review, local paper execution, calibration и readiness refresh. Live broker execution остава изключен.
+
+CLI:
+
+```bash
+.venv/bin/python -m tradingagents.dashboard.autopilot run-once
+.venv/bin/python -m tradingagents.dashboard.autopilot scanner-once
+.venv/bin/python -m tradingagents.dashboard.autopilot daily-once
+.venv/bin/python -m tradingagents.dashboard.autopilot status
+```
+
+Основни правила:
+
+- Ако няма `scanner_rss_sources`, scanner ingest се skip-ва.
+- Paper orders минават през съществуващия `PaperOrderService`, risk gates, idempotency и audit log.
+- `daily_analysis_enabled` е изключено по default, за да не дублира weekday daily timer-а и да не харчи LLM budget без изрична конфигурация.
+- Manual dashboard бутоните остават за research/debug, но default tab вече е `Autopilot`.
+
 ## OpenAI Spend Tracking
 
 OpenAI spend tracking се прави през official Costs API.
@@ -616,6 +655,16 @@ POST /api/automation/run-now
 GET /api/automation/history
 ```
 
+Autopilot:
+
+```text
+GET /api/autopilot/config
+PUT /api/autopilot/config
+GET /api/autopilot/status
+GET /api/autopilot/jobs
+POST /api/autopilot/run-now
+```
+
 Costs:
 
 ```text
@@ -685,6 +734,13 @@ systemctl --user restart tradingagents-dashboard.service
 
 ```bash
 systemctl --user disable --now tradingagents-daily.timer
+```
+
+Autopilot timer:
+
+```bash
+systemctl --user status tradingagents-autopilot.timer
+systemctl --user disable --now tradingagents-autopilot.timer
 ```
 
 ## Тестове

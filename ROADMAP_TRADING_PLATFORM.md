@@ -31,6 +31,7 @@
 | Dashboard | Скелет | Не е production UI |
 | Paper Portfolio + weekly email report | Готов | SQLite ledger history + Resend report |
 | Daily automation | Готов | Watchlist + positions, OpenAI budget guard |
+| Paper autopilot | Готов | Scanner/confluence/paper execution orchestration + dashboard Autopilot tab |
 | Upstream sync | Готов | Fork + weekly upstream PR workflow |
 | Docker | Готов | Single-shot run |
 | Backtesting | MVP+validation готов | Isolated replay engine, transaction cost модел, benchmark comparison, SQLite/API history, walk-forward и Monte Carlo/bootstrap |
@@ -372,7 +373,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 9. **Готово като MVP**: Local paper execution на scanner confluence candidates през съществуващия PaperLedger/OMS, без broker account.
 10. **Готово като MVP**: Калибрация/A-B отчет за scanner strategy спрямо single-shot analyzer по orders/fills/closed-trade metrics.
 11. **Готово като MVP**: Production hardening readiness layer — observability counters, postmortems и 30-day paper stability gate.
-12. **Остава извън автоматична имплементация**: реален live capital. Това изисква минимум 1 месец стабилен paper режим и изрично ръчно решение; платформата не го включва сама.
+12. **Готово като MVP**: Paper Autopilot — scanner/confluence/paper execution работят от scheduler; manual controls остават като lab/debug.
+13. **Остава извън автоматична имплементация**: реален live capital. Това изисква минимум 1 месец стабилен paper режим и изрично ръчно решение; платформата не го включва сама.
 
 ---
 

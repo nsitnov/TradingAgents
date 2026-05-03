@@ -56,6 +56,42 @@ def test_order_risk_and_audit_endpoints_are_available(monkeypatch):
     assert "orders" in client.get("/api/broker/orders").json()
 
 
+def test_autopilot_endpoints_are_available(monkeypatch):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+
+    class StubAutopilot:
+        def config(self):
+            return {"enabled": True, "paper_trading_enabled": True}
+
+        def save_config(self, config):
+            return {**self.config(), **config}
+
+        def status(self):
+            return {"enabled": True, "mode": "paper_autopilot"}
+
+        def jobs(self, limit=50):
+            return [{"job_id": "auto-1", "status": "completed"}]
+
+        def run_once(self, job_type="run_once"):
+            return {
+                "job_id": "auto-1",
+                "status": "completed",
+                "job_type": job_type,
+                "result": {"summary": {"paper_executions": 1}},
+            }
+
+    monkeypatch.setattr(dashboard_app, "autopilot_service", StubAutopilot())
+    client = TestClient(app)
+
+    assert client.get("/api/autopilot/config").json()["enabled"] is True
+    assert client.put("/api/autopilot/config", json={"enabled": False}).json()[
+        "enabled"
+    ] is False
+    assert client.get("/api/autopilot/status").json()["mode"] == "paper_autopilot"
+    assert client.get("/api/autopilot/jobs").json()["jobs"][0]["job_id"] == "auto-1"
+    assert client.post("/api/autopilot/run-now").json()["status"] == "completed"
+
+
 def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
     storage = DashboardStorage(

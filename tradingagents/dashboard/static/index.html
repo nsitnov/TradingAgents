@@ -43,14 +43,14 @@
 
       h1 { font-size: 18px; margin: 0; font-weight: 700; }
       h2 { font-size: 14px; margin: 0 0 10px; color: #293241; }
-      button, input, select {
+      button, input, select, textarea {
         font: inherit;
         border: 1px solid var(--line);
         border-radius: 6px;
         background: #fff;
         color: var(--ink);
       }
-      input, select { min-height: 34px; padding: 6px 8px; width: 100%; }
+      input, select, textarea { min-height: 34px; padding: 6px 8px; width: 100%; }
       button {
         min-height: 34px;
         padding: 7px 12px;
@@ -208,7 +208,7 @@
       function App() {
         const today = new Date().toISOString().slice(0, 10);
         const defaultBacktestStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const [tab, setTab] = useState("live");
+        const [tab, setTab] = useState("autopilot");
         const [form, setForm] = useState({
           ticker: "SPY",
           analysis_date: today,
@@ -225,6 +225,11 @@
         const [portfolioHistory, setPortfolioHistory] = useState(null);
         const [automationConfig, setAutomationConfig] = useState(null);
         const [automationHistory, setAutomationHistory] = useState([]);
+        const [autopilotConfig, setAutopilotConfig] = useState(null);
+        const [autopilotStatus, setAutopilotStatus] = useState(null);
+        const [autopilotJobs, setAutopilotJobs] = useState([]);
+        const [autopilotLoading, setAutopilotLoading] = useState(false);
+        const [autopilotError, setAutopilotError] = useState("");
         const [openaiCosts, setOpenaiCosts] = useState(null);
         const [readinessMetrics, setReadinessMetrics] = useState(null);
         const [stabilityGate, setStabilityGate] = useState(null);
@@ -286,6 +291,7 @@
           refreshPortfolio();
           refreshPortfolioHistory();
           refreshAutomation();
+          refreshAutopilot();
           refreshCosts();
           refreshReadiness();
           refreshBacktests();
@@ -319,6 +325,52 @@
           ]);
           if (configRes.ok) setAutomationConfig(await configRes.json());
           if (historyRes.ok) setAutomationHistory((await historyRes.json()).jobs || []);
+        }
+
+        async function refreshAutopilot() {
+          const [configRes, statusRes, jobsRes] = await Promise.all([
+            fetch("/api/autopilot/config"),
+            fetch("/api/autopilot/status"),
+            fetch("/api/autopilot/jobs")
+          ]);
+          if (configRes.ok) setAutopilotConfig(await configRes.json());
+          if (statusRes.ok) setAutopilotStatus(await statusRes.json());
+          if (jobsRes.ok) setAutopilotJobs((await jobsRes.json()).jobs || []);
+        }
+
+        async function saveAutopilotConfig(nextConfig) {
+          setAutopilotError("");
+          const res = await fetch("/api/autopilot/config", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(nextConfig)
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setAutopilotError(body.detail || "Could not save autopilot config");
+            return;
+          }
+          setAutopilotConfig(body);
+          refreshAutopilot();
+        }
+
+        async function runAutopilotNow() {
+          setAutopilotError("");
+          setAutopilotLoading(true);
+          try {
+            const res = await fetch("/api/autopilot/run-now", { method: "POST" });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setAutopilotError(body.detail || "Could not run autopilot");
+              return;
+            }
+            refreshAutopilot();
+            refreshScanner();
+            refreshPortfolio();
+            refreshReadiness();
+          } finally {
+            setAutopilotLoading(false);
+          }
         }
 
         async function refreshCosts() {
@@ -598,11 +650,12 @@
               <h1>TradingAgents Live Dashboard</h1>
               <div className="tabs">
                 {[
+                  ["autopilot", "Autopilot"],
                   ["live", "Live Runs"],
                   ["portfolio", "Paper Portfolio"],
-                  ["backtests", "Backtests"],
-                  ["agentReplay", "Agent Replay"],
-                  ["scanner", "Scanner"],
+                  ["backtests", "Backtest Lab"],
+                  ["agentReplay", "Replay Lab"],
+                  ["scanner", "Scanner Lab"],
                   ["automation", "Automation"],
                   ["readiness", "Readiness"],
                   ["history", "Analysis History"],
@@ -613,6 +666,7 @@
                 <span className={statusClass(run?.status)}>{run?.status || "idle"}</span>
               </div>
             </header>
+            {tab === "autopilot" && <AutopilotDashboard config={autopilotConfig} status={autopilotStatus} jobs={autopilotJobs} loading={autopilotLoading} error={autopilotError} saveConfig={saveAutopilotConfig} runNow={runAutopilotNow} refresh={refreshAutopilot} scannerCalibration={scannerCalibration} readiness={stabilityGate} />}
             {tab === "live" && (
               <main>
                 <aside className="sidebar">
@@ -765,6 +819,103 @@
               ))}
             </div>
           </section>
+        );
+      }
+
+      function AutopilotDashboard({ config, status, jobs, loading, error, saveConfig, runNow, refresh, scannerCalibration, readiness }) {
+        const [draftSources, setDraftSources] = useState("");
+        useEffect(() => {
+          if (config) setDraftSources((config.scanner_rss_sources || []).join("\n"));
+        }, [config]);
+        const nextConfig = config || {};
+        function update(values) {
+          saveConfig({ ...nextConfig, ...values });
+        }
+        function saveSources() {
+          update({ scanner_rss_sources: draftSources.split("\n").map((item) => item.trim()).filter(Boolean) });
+        }
+        const latest = status?.latest_job;
+        const funnel = scannerCalibration?.funnel || {};
+        return (
+          <main>
+            <aside className="sidebar">
+              <section className="panel">
+                <h2>Autopilot</h2>
+                <div className="checks">
+                  <label><input type="checkbox" checked={!!nextConfig.enabled} onChange={(e) => update({ enabled: e.target.checked })} />Enabled</label>
+                  <label><input type="checkbox" checked={!!nextConfig.paper_trading_enabled} onChange={(e) => update({ paper_trading_enabled: e.target.checked })} />Paper orders</label>
+                  <label><input type="checkbox" checked={!!nextConfig.scanner_enabled} onChange={(e) => update({ scanner_enabled: e.target.checked })} />Scanner</label>
+                  <label><input type="checkbox" checked={!!nextConfig.daily_analysis_enabled} onChange={(e) => update({ daily_analysis_enabled: e.target.checked })} />Daily agents</label>
+                </div>
+                <div className="actions">
+                  <button className="primary" disabled={loading || !nextConfig.enabled} onClick={runNow}>{loading ? "Running" : "Run Now"}</button>
+                  <button onClick={refresh}>Refresh</button>
+                </div>
+                {error && <p className="neg">{error}</p>}
+              </section>
+              <section className="panel">
+                <h2>Scanner Sources</h2>
+                <div className="field"><label>RSS URLs</label><textarea rows="7" value={draftSources} onChange={(e) => setDraftSources(e.target.value)} /></div>
+                <button onClick={saveSources}>Save Sources</button>
+              </section>
+              <section className="panel">
+                <h2>Thresholds</h2>
+                <div className="grid-2">
+                  <div className="field"><label>Z</label><input type="number" step="0.1" value={nextConfig.z_threshold ?? 1.5} onChange={(e) => update({ z_threshold: Number(e.target.value || 1.5) })} /></div>
+                  <div className="field"><label>Confluence</label><input type="number" step="0.01" value={nextConfig.min_confluence_score ?? 0.65} onChange={(e) => update({ min_confluence_score: Number(e.target.value || 0.65) })} /></div>
+                </div>
+                <div className="grid-2">
+                  <div className="field"><label>Min gap</label><input type="number" step="0.001" value={nextConfig.min_abs_gap_pct ?? 0.005} onChange={(e) => update({ min_abs_gap_pct: Number(e.target.value || 0.005) })} /></div>
+                  <div className="field"><label>Max orders</label><input type="number" min="0" max="100" value={nextConfig.max_paper_orders_per_cycle ?? 10} onChange={(e) => update({ max_paper_orders_per_cycle: Number(e.target.value || 10) })} /></div>
+                </div>
+              </section>
+            </aside>
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>Mode</span><strong>{status?.mode || "paper_autopilot"}</strong></div>
+                <div className="metric"><span>Status</span><strong className={status?.enabled ? "pos" : "neg"}>{status?.enabled ? "enabled" : "disabled"}</strong></div>
+                <div className="metric"><span>Live Trading</span><strong className="neg">{status?.readiness?.live_trading_allowed ? "allowed" : "disabled"}</strong></div>
+                <div className="metric"><span>RSS Sources</span><strong>{status?.scanner_sources || 0}</strong></div>
+                <div className="metric"><span>Candidates</span><strong>{funnel.paper_candidates || 0}</strong></div>
+                <div className="metric"><span>Paper Executions</span><strong>{funnel.paper_executions || 0}</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Latest Autopilot Run</h2>
+                <table>
+                  <tbody>
+                    <tr><th>Status</th><td>{latest?.status || "--"}</td></tr>
+                    <tr><th>Started</th><td>{latest?.started_at || "--"}</td></tr>
+                    <tr><th>Ended</th><td>{latest?.ended_at || "--"}</td></tr>
+                    <tr><th>Events</th><td>{latest?.result?.summary?.scanner_events || 0}</td></tr>
+                    <tr><th>Signals</th><td>{latest?.result?.summary?.scanner_signals || 0}</td></tr>
+                    <tr><th>Orders</th><td>{latest?.result?.summary?.paper_executions || 0}</td></tr>
+                    <tr><th>Error</th><td className="neg">{latest?.error || "--"}</td></tr>
+                  </tbody>
+                </table>
+              </section>
+              <section className="panel">
+                <h2>Autopilot Jobs</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Started</th><th>Type</th><th>Status</th><th>Signals</th><th>Orders</th><th>Error</th></tr></thead>
+                    <tbody>
+                      {jobs.length === 0 && <tr><td colSpan="6" className="muted">No autopilot jobs yet.</td></tr>}
+                      {jobs.map((job) => (
+                        <tr key={job.job_id}>
+                          <td>{job.started_at}</td>
+                          <td>{job.job_type}</td>
+                          <td className={job.status === "completed" ? "pos" : job.status === "error" ? "neg" : ""}>{job.status}</td>
+                          <td>{job.result?.summary?.scanner_signals || 0}</td>
+                          <td>{job.result?.summary?.paper_executions || 0}</td>
+                          <td className="neg">{job.error || "--"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
+          </main>
         );
       }
 
