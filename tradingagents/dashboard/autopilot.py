@@ -41,7 +41,7 @@ DEFAULT_AUTOPILOT_CONFIG = {
     "enabled": True,
     "paper_trading_enabled": True,
     "scanner_enabled": True,
-    "scanner_rss_sources": [],
+    "scanner_rss_sources": ["https://feeds.marketwatch.com/marketwatch/topstories/"],
     "scanner_limit_per_feed": 20,
     "lookback_days": 60,
     "z_threshold": 1.5,

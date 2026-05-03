@@ -474,7 +474,8 @@ CLI:
 
 Основни правила:
 
-- Ако няма `scanner_rss_sources`, scanner ingest се skip-ва.
+- Default `scanner_rss_sources` включва MarketWatch top stories RSS; можеш да добавиш още feeds от `Autopilot` tab-а.
+- Ако `scanner_rss_sources` се изпразни, scanner ingest се skip-ва.
 - Paper orders минават през съществуващия `PaperOrderService`, risk gates, idempotency и audit log.
 - `daily_analysis_enabled` е изключено по default, за да не дублира weekday daily timer-а и да не харчи LLM budget без изрична конфигурация.
 - Manual dashboard бутоните остават за research/debug, но default tab вече е `Autopilot`.
