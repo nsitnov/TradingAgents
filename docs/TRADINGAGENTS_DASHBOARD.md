@@ -372,6 +372,7 @@ MVP функционалност:
 - deterministic confluence review: quantitative validator, news mapper, liquidity proxy и hard risk gate
 - paper-only candidate queue
 - local paper execution на валидирани candidates през `PaperOrderService`, без broker account
+- calibration/A-B report: funnel rates, scanner paper orders vs normal agent orders, fill/rejection rates и basic closed-trade metrics
 - SQLite persistence за events/signals/dislocations/confluence reviews
 - Dashboard tab `Scanner`
 
@@ -396,6 +397,7 @@ GET /api/scanner/dislocations
 POST /api/scanner/confluence/review
 GET /api/scanner/confluence/reviews
 POST /api/scanner/confluence/execute
+GET /api/scanner/calibration
 ```
 
 ## Daily Automation
@@ -577,6 +579,7 @@ GET /api/scanner/dislocations
 POST /api/scanner/confluence/review
 GET /api/scanner/confluence/reviews
 POST /api/scanner/confluence/execute
+GET /api/scanner/calibration
 ```
 
 Orders / Risk / Audit:

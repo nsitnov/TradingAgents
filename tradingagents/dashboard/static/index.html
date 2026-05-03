@@ -272,6 +272,7 @@
         const [scannerEvents, setScannerEvents] = useState([]);
         const [scannerDislocations, setScannerDislocations] = useState([]);
         const [scannerConfluenceReviews, setScannerConfluenceReviews] = useState([]);
+        const [scannerCalibration, setScannerCalibration] = useState(null);
         const [scannerLoading, setScannerLoading] = useState(false);
         const [scannerError, setScannerError] = useState("");
         const [error, setError] = useState("");
@@ -418,16 +419,18 @@
         }
 
         async function refreshScanner() {
-          const [signalsRes, eventsRes, dislocationsRes, confluenceRes] = await Promise.all([
+          const [signalsRes, eventsRes, dislocationsRes, confluenceRes, calibrationRes] = await Promise.all([
             fetch("/api/scanner/signals"),
             fetch("/api/scanner/events"),
             fetch("/api/scanner/dislocations"),
-            fetch("/api/scanner/confluence/reviews")
+            fetch("/api/scanner/confluence/reviews"),
+            fetch("/api/scanner/calibration")
           ]);
           if (signalsRes.ok) setScannerSignals((await signalsRes.json()).signals || []);
           if (eventsRes.ok) setScannerEvents((await eventsRes.json()).events || []);
           if (dislocationsRes.ok) setScannerDislocations((await dislocationsRes.json()).dislocations || []);
           if (confluenceRes.ok) setScannerConfluenceReviews((await confluenceRes.json()).reviews || []);
+          if (calibrationRes.ok) setScannerCalibration(await calibrationRes.json());
         }
 
         async function ingestScannerEvent(event) {
@@ -614,7 +617,7 @@
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
             {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
-            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} executeConfluence={executeScannerConfluence} refresh={refreshScanner} />}
+            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} calibration={scannerCalibration} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} executeConfluence={executeScannerConfluence} refresh={refreshScanner} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -1058,9 +1061,12 @@
         );
       }
 
-      function ScannerDashboard({ form, setForm, signals, events, dislocations, confluenceReviews, loading, error, ingestEvent, detectDislocations, reviewConfluence, executeConfluence, refresh }) {
+      function ScannerDashboard({ form, setForm, signals, events, dislocations, confluenceReviews, calibration, loading, error, ingestEvent, detectDislocations, reviewConfluence, executeConfluence, refresh }) {
         const paperCandidates = confluenceReviews.filter((item) => item.status === "paper_candidate");
         const executableCandidates = paperCandidates.filter((item) => !item.execution);
+        const funnel = calibration?.funnel || {};
+        const scannerStrategy = calibration?.scanner || {};
+        const baselineStrategy = calibration?.baseline || {};
         return (
           <main>
             <aside className="sidebar">
@@ -1139,6 +1145,40 @@
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </section>
+              <section className="panel">
+                <h2>Scanner Calibration</h2>
+                <section className="grid-3">
+                  <div className="metric"><span>Candidate Rate</span><strong>{((funnel.candidate_per_dislocation || 0) * 100).toFixed(1)}%</strong></div>
+                  <div className="metric"><span>Execution Rate</span><strong>{((funnel.execution_per_candidate || 0) * 100).toFixed(1)}%</strong></div>
+                  <div className="metric"><span>Scanner Fill Rate</span><strong>{((scannerStrategy.fill_rate || 0) * 100).toFixed(1)}%</strong></div>
+                  <div className="metric"><span>Scanner Notional</span><strong>{money(scannerStrategy.filled_notional || 0)}</strong></div>
+                  <div className="metric"><span>Scanner Trades</span><strong>{scannerStrategy.performance?.trade_count || 0}</strong></div>
+                  <div className="metric"><span>Agent Orders</span><strong>{baselineStrategy.orders || 0}</strong></div>
+                </section>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Strategy</th><th>Orders</th><th>Filled</th><th>Rejected</th><th>Fill Rate</th><th>Closed P&L</th><th>Profit Factor</th></tr></thead>
+                    <tbody>
+                      {[scannerStrategy, baselineStrategy].map((strategy) => (
+                        <tr key={strategy.name || "unknown"}>
+                          <td>{strategy.name || "--"}</td>
+                          <td>{strategy.orders || 0}</td>
+                          <td>{strategy.filled_orders || 0}</td>
+                          <td>{strategy.rejected_orders || 0}</td>
+                          <td>{((strategy.fill_rate || 0) * 100).toFixed(1)}%</td>
+                          <td className={(strategy.performance?.gross_profit || 0) - (strategy.performance?.gross_loss || 0) >= 0 ? "pos" : "neg"}>{money((strategy.performance?.gross_profit || 0) - (strategy.performance?.gross_loss || 0))}</td>
+                          <td>{strategy.performance?.profit_factor == null ? "--" : number(strategy.performance.profit_factor)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="agent-list">
+                  {(calibration?.recommendations || []).map((item, index) => (
+                    <div className="agent" key={index}><span>{item}</span></div>
+                  ))}
                 </div>
               </section>
               <section className="panel">

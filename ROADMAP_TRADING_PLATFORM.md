@@ -38,7 +38,7 @@
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
-| **Cross-market scanner** | **MVP+paper execution готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector, deterministic agent confluence, local paper execution; без broker trading |
+| **Cross-market scanner** | **MVP+calibration готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector, deterministic agent confluence, local paper execution, A/B calibration report; без broker trading |
 
 ---
 
@@ -348,7 +348,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 - Седмица 5: News firehose + translation + entity extraction. **MVP готов: manual/RSS ingest + rule-based extraction.**
 - Седмица 6: Cross-listed mapping + dislocation detector. **MVP готов: reference-vs-target gap + historical spread Z-score.**
 - Седмица 7: Agent confluence layer + paper trading on signals. **MVP готов: confluence candidates се изпълняват през local PaperLedger/OMS, без broker.**
-- Седмица 8: Калибрация, A/B vs single-shot analyzer
+- Седмица 8: Калибрация, A/B vs single-shot analyzer. **MVP готов: scanner funnel + scanner-vs-agent paper order report.**
 
 ### Месец 3 — Production hardening
 - Седмица 9: Redis Streams/TimescaleDB only if SQLite + in-process workers are the bottleneck.
@@ -369,7 +369,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 7. **Готово като MVP**: Dislocation detector с price moves/Z-score, за да отделяме истински lead-lag възможности от обикновени новини.
 8. **Готово като MVP**: Agent confluence върху scanner signals, който валидира dislocations и прави paper-only candidate queue.
 9. **Готово като MVP**: Local paper execution на scanner confluence candidates през съществуващия PaperLedger/OMS, без broker account.
-10. **Следващо**: Калибрация/A-B отчет за scanner strategy спрямо single-shot analyzer и benchmark PnL.
+10. **Готово като MVP**: Калибрация/A-B отчет за scanner strategy спрямо single-shot analyzer по orders/fills/closed-trade metrics.
+11. **Следващо**: Production hardening — observability, postmortem agent и 1-месечен paper stability gate преди какъвто и да е live capital.
 
 ---
 

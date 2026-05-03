@@ -262,3 +262,15 @@ def test_scanner_endpoints_are_available(monkeypatch, tmp_path):
     assert client.post("/api/scanner/confluence/execute", json={}).json()[
         "executions"
     ][0]["execution"]["status"] == "filled"
+
+    class StubScannerCalibration:
+        def report(self, limit=250):
+            return {
+                "funnel": {"paper_executions": 1},
+                "scanner": {"orders": 1},
+                "baseline": {"orders": 0},
+                "recommendations": [],
+            }
+
+    monkeypatch.setattr(dashboard_app, "scanner_calibration", StubScannerCalibration())
+    assert client.get("/api/scanner/calibration").json()["scanner"]["orders"] == 1

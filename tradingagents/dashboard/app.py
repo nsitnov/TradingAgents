@@ -27,6 +27,7 @@ from tradingagents.dashboard.scanner import (
     RSSIngestRequest,
     ScannerEventRequest,
 )
+from tradingagents.dashboard.scanner_calibration import ScannerCalibrationReporter
 from tradingagents.dashboard.scanner_confluence import (
     ConfluenceRequest,
     ScannerConfluenceReviewer,
@@ -50,6 +51,7 @@ agent_replay_service = AgentReplayService(storage=storage)
 scanner = CrossMarketScanner(storage=storage)
 scanner_confluence = ScannerConfluenceReviewer(storage=storage)
 scanner_executor = ScannerPaperExecutor(storage=storage, ledger=ledger)
+scanner_calibration = ScannerCalibrationReporter(storage=storage)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -282,6 +284,11 @@ def scanner_confluence_reviews(limit: int = Query(default=100, ge=1, le=500)):
 @app.post("/api/scanner/confluence/execute")
 def execute_scanner_confluence(request: ScannerExecutionRequest):
     return scanner_executor.execute(request)
+
+
+@app.get("/api/scanner/calibration")
+def scanner_calibration_report(limit: int = Query(default=250, ge=1, le=1000)):
+    return scanner_calibration.report(limit=limit)
 
 
 @app.get("/api/orders")
