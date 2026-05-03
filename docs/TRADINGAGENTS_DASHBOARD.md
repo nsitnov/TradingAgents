@@ -218,6 +218,7 @@ Dashboard tab `Paper Portfolio` показва:
 - profit factor
 - average closed trade P&L
 - Sharpe-like score over stored equity snapshots
+- benchmark comparison срещу SPY и QQQ за същия snapshot период
 - equity curve
 - max drawdown
 - позиции по тикер

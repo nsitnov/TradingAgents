@@ -11,7 +11,7 @@
 Този roadmap е реалистичен, но първоначалната версия поставяше real-time инфраструктурата твърде рано. В текущия fork вече има dashboard, SQLite history, paper ledger, daily automation, weekly Resend report и Git upstream sync. Затова правилният първи production slice е:
 
 1. **Paper OMS + deterministic risk gates + audit log**
-2. **Paper performance analytics**, за да мерим дали стратегията печели виртуално
+2. **Paper performance analytics**, за да мерим дали стратегията печели виртуално и дали бие SPY/QQQ
 3. **Cross-market scanner MVP без broker trading**
 4. **Paper trading на scanner signals**
 5. **Broker adapters остават read/test-only до изрично решение за paper account**
@@ -341,7 +341,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 
 1. **Веднага днес**: Commit-ни този roadmap в repo-то, защото в момента е жив документ извън Git history.
 2. **Тази седмица**: Имплементирай Paper OMS + hard risk gates + audit trail върху текущия dashboard/SQLite stack.
-3. **След това**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L.
+3. **След това**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L, alpha vs SPY/QQQ.
 4. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
 5. **Седмица 3**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
 

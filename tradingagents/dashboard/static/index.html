@@ -524,6 +524,7 @@
         const history = data?.history || [];
         const trades = data?.trades || [];
         const performance = data?.performance || {};
+        const benchmarks = performance.benchmarks || [];
         const equities = history.map((item) => Number(item.equity || 0));
         const min = Math.min(...equities, Number(portfolio?.equity || 0));
         const max = Math.max(...equities, Number(portfolio?.equity || 0));
@@ -554,6 +555,30 @@
                     return <div className="bar" title={`${item.created_at}: ${money(item.equity)}`} style={{ height: `${height}px` }} key={item.id}></div>;
                   })}
                 </div>
+              </section>
+              <section className="panel">
+                <h2>Benchmark Comparison</h2>
+                <table>
+                  <thead><tr><th>Benchmark</th><th>Return</th><th>Alpha</th><th>Alpha Value</th><th>Period</th></tr></thead>
+                  <tbody>
+                    {benchmarks.length === 0 && <tr><td colSpan="5" className="muted">Benchmark data is not available yet.</td></tr>}
+                    {benchmarks.map((item) => (
+                      <tr key={item.ticker}>
+                        <td>{item.ticker}</td>
+                        {item.error ? (
+                          <td colSpan="4" className="muted">{item.error}</td>
+                        ) : (
+                          <>
+                            <td className={(item.return_pct || 0) >= 0 ? "pos" : "neg"}>{((item.return_pct || 0) * 100).toFixed(2)}%</td>
+                            <td className={(item.alpha_pct || 0) >= 0 ? "pos" : "neg"}>{((item.alpha_pct || 0) * 100).toFixed(2)}%</td>
+                            <td className={(item.alpha_value || 0) >= 0 ? "pos" : "neg"}>{money(item.alpha_value)}</td>
+                            <td>{item.start_date} → {item.end_date}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </section>
               <div className="grid-2">
                 <Portfolio portfolio={portfolio} />

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from math import sqrt
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+
+PriceProvider = Callable[[str, date, date], Tuple[float, float]]
 
 
 def portfolio_performance(
-    history: List[Dict[str, Any]], trades: List[Dict[str, Any]], initial_cash: float
+    history: List[Dict[str, Any]],
+    trades: List[Dict[str, Any]],
+    initial_cash: float,
+    *,
+    benchmarks: Sequence[str] = ("SPY", "QQQ"),
+    price_provider: Optional[PriceProvider] = None,
 ) -> Dict[str, Any]:
     if not history:
         return {
@@ -16,6 +24,7 @@ def portfolio_performance(
             "total_return_pct": 0.0,
             "max_drawdown": 0.0,
             "snapshot_count": 0,
+            "benchmarks": [],
             **trade_performance(trades),
         }
 
@@ -33,8 +42,65 @@ def portfolio_performance(
         "volatility": _stdev(returns),
         "sharpe_like": _sharpe_like(returns),
         "snapshot_count": len(history),
+        "benchmarks": benchmark_comparison(
+            history,
+            start_equity=start_equity,
+            portfolio_return_pct=(total_pnl / start_equity) if start_equity else 0.0,
+            benchmarks=benchmarks,
+            price_provider=price_provider,
+        ),
         **trade_performance(trades),
     }
+
+
+def benchmark_comparison(
+    history: List[Dict[str, Any]],
+    *,
+    start_equity: float,
+    portfolio_return_pct: float,
+    benchmarks: Sequence[str] = ("SPY", "QQQ"),
+    price_provider: Optional[PriceProvider] = None,
+) -> List[Dict[str, Any]]:
+    if not history:
+        return []
+    start_date = _history_date(history[0])
+    end_date = _history_date(history[-1])
+    if not start_date or not end_date:
+        return []
+    provider = price_provider or _yfinance_price_range
+    rows = []
+    for ticker in benchmarks:
+        symbol = ticker.upper().strip()
+        if not symbol:
+            continue
+        try:
+            start_price, end_price = provider(symbol, start_date, end_date)
+            benchmark_return = (end_price - start_price) / start_price if start_price else 0.0
+            benchmark_end_equity = start_equity * (1.0 + benchmark_return)
+            portfolio_end_equity = start_equity * (1.0 + portfolio_return_pct)
+            rows.append(
+                {
+                    "ticker": symbol,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "start_price": start_price,
+                    "end_price": end_price,
+                    "return_pct": benchmark_return,
+                    "end_equity": benchmark_end_equity,
+                    "alpha_pct": portfolio_return_pct - benchmark_return,
+                    "alpha_value": portfolio_end_equity - benchmark_end_equity,
+                }
+            )
+        except Exception as exc:
+            rows.append(
+                {
+                    "ticker": symbol,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "error": str(exc),
+                }
+            )
+    return rows
 
 
 def trade_performance(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -101,6 +167,31 @@ def _trade_time(trade: Dict[str, Any]) -> datetime:
     if "T" not in raw:
         raw = f"{raw}T00:00:00+00:00"
     return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+
+
+def _history_date(snapshot: Dict[str, Any]) -> Optional[date]:
+    raw = snapshot.get("created_at")
+    if not raw:
+        return None
+    if "T" not in raw:
+        return date.fromisoformat(raw[:10])
+    return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+
+
+def _yfinance_price_range(ticker: str, start_date: date, end_date: date) -> Tuple[float, float]:
+    import yfinance as yf
+
+    query_end = end_date + timedelta(days=1)
+    history = yf.Ticker(ticker).history(
+        start=start_date.isoformat(),
+        end=query_end.isoformat(),
+    )
+    if history.empty or "Close" not in history:
+        raise ValueError(f"No benchmark price data for {ticker}")
+    closes = history["Close"].dropna()
+    if closes.empty:
+        raise ValueError(f"No benchmark close prices for {ticker}")
+    return float(closes.iloc[0]), float(closes.iloc[-1])
 
 
 def _period_returns(equities: List[float]) -> List[float]:
