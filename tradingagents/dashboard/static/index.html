@@ -262,10 +262,14 @@
           summary: "Taiwan Semiconductor reports record growth in advanced chip demand.",
           source: "manual",
           region: "ASIA",
-          url: ""
+          url: "",
+          lookback_days: 60,
+          z_threshold: 1.5,
+          min_abs_gap_pct: 0.005
         });
         const [scannerSignals, setScannerSignals] = useState([]);
         const [scannerEvents, setScannerEvents] = useState([]);
+        const [scannerDislocations, setScannerDislocations] = useState([]);
         const [scannerLoading, setScannerLoading] = useState(false);
         const [scannerError, setScannerError] = useState("");
         const [error, setError] = useState("");
@@ -412,12 +416,14 @@
         }
 
         async function refreshScanner() {
-          const [signalsRes, eventsRes] = await Promise.all([
+          const [signalsRes, eventsRes, dislocationsRes] = await Promise.all([
             fetch("/api/scanner/signals"),
-            fetch("/api/scanner/events")
+            fetch("/api/scanner/events"),
+            fetch("/api/scanner/dislocations")
           ]);
           if (signalsRes.ok) setScannerSignals((await signalsRes.json()).signals || []);
           if (eventsRes.ok) setScannerEvents((await eventsRes.json()).events || []);
+          if (dislocationsRes.ok) setScannerDislocations((await dislocationsRes.json()).dislocations || []);
         }
 
         async function ingestScannerEvent(event) {
@@ -433,6 +439,30 @@
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
               setScannerError(body.detail || "Could not ingest scanner event");
+              return;
+            }
+            refreshScanner();
+          } finally {
+            setScannerLoading(false);
+          }
+        }
+
+        async function detectScannerDislocations() {
+          setScannerError("");
+          setScannerLoading(true);
+          try {
+            const res = await fetch("/api/scanner/dislocations/detect", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lookback_days: Number(scannerForm.lookback_days || 60),
+                z_threshold: Number(scannerForm.z_threshold || 1.5),
+                min_abs_gap_pct: Number(scannerForm.min_abs_gap_pct || 0.005)
+              })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setScannerError(body.detail || "Could not detect dislocations");
               return;
             }
             refreshScanner();
@@ -535,7 +565,7 @@
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
             {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
-            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} refresh={refreshScanner} />}
+            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} refresh={refreshScanner} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -979,7 +1009,7 @@
         );
       }
 
-      function ScannerDashboard({ form, setForm, signals, events, loading, error, ingestEvent, refresh }) {
+      function ScannerDashboard({ form, setForm, signals, events, dislocations, loading, error, ingestEvent, detectDislocations, refresh }) {
         return (
           <main>
             <aside className="sidebar">
@@ -1001,6 +1031,15 @@
                 </form>
               </section>
               <section className="panel">
+                <h2>Dislocation Detector</h2>
+                <div className="grid-2">
+                  <div className="field"><label>Lookback days</label><input type="number" min="10" max="500" value={form.lookback_days} onChange={(e) => setForm({ ...form, lookback_days: e.target.value })} /></div>
+                  <div className="field"><label>Z threshold</label><input type="number" min="0" max="10" step="0.1" value={form.z_threshold} onChange={(e) => setForm({ ...form, z_threshold: e.target.value })} /></div>
+                </div>
+                <div className="field"><label>Min gap pct</label><input type="number" min="0" max="1" step="0.001" value={form.min_abs_gap_pct} onChange={(e) => setForm({ ...form, min_abs_gap_pct: e.target.value })} /></div>
+                <button className="primary" type="button" disabled={loading || signals.length === 0} onClick={detectDislocations}>{loading ? "Detecting" : "Detect Dislocations"}</button>
+              </section>
+              <section className="panel">
                 <h2>Recent Events</h2>
                 <div className="agent-list">
                   {events.length === 0 && <p className="muted">No scanner events yet.</p>}
@@ -1017,7 +1056,28 @@
               <section className="grid-3">
                 <div className="metric"><span>Signals</span><strong>{signals.length}</strong></div>
                 <div className="metric"><span>Events</span><strong>{events.length}</strong></div>
-                <div className="metric"><span>Mode</span><strong>Observe</strong></div>
+                <div className="metric"><span>Dislocations</span><strong>{dislocations.filter((item) => item.is_dislocated).length}</strong></div>
+              </section>
+              <section className="panel">
+                <h2>Detected Dislocations</h2>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Z</th><th>Gap</th><th>Reference</th><th>Target</th><th>Entity</th><th>State</th></tr></thead>
+                    <tbody>
+                      {dislocations.length === 0 && <tr><td colSpan="6" className="muted">No dislocations detected yet.</td></tr>}
+                      {dislocations.map((item) => (
+                        <tr key={item.dislocation_id}>
+                          <td className={item.is_dislocated ? "pos" : ""}>{number(item.z_score)}</td>
+                          <td className={(item.gap_pct || 0) >= 0 ? "pos" : "neg"}>{((item.gap_pct || 0) * 100).toFixed(2)}%</td>
+                          <td>{item.reference_symbol}</td>
+                          <td>{item.target_symbol}</td>
+                          <td>{item.entity}</td>
+                          <td>{item.is_dislocated ? item.direction : "normal"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
               <section className="panel">
                 <h2>Cross-Market Signals</h2>

@@ -241,6 +241,26 @@ class DashboardStorage:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS scanner_dislocations (
+                    dislocation_id TEXT PRIMARY KEY,
+                    signal_id TEXT NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    entity TEXT NOT NULL,
+                    reference_symbol TEXT NOT NULL,
+                    target_symbol TEXT NOT NULL,
+                    reference_move_pct REAL NOT NULL,
+                    target_move_pct REAL NOT NULL,
+                    gap_pct REAL NOT NULL,
+                    z_score REAL NOT NULL,
+                    spread_mean REAL NOT NULL,
+                    spread_std REAL NOT NULL,
+                    lookback_days INTEGER NOT NULL,
+                    is_dislocated INTEGER NOT NULL,
+                    direction TEXT NOT NULL,
+                    dislocation_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -928,6 +948,13 @@ class DashboardStorage:
             ).fetchall()
         return [self._row_to_scanner_event(row) for row in rows]
 
+    def scanner_event_detail(self, event_id: int) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM scanner_events WHERE event_id = ?", (event_id,)
+            ).fetchone()
+        return self._row_to_scanner_event(row) if row else None
+
     def upsert_scanner_signal(self, signal: Dict[str, Any]) -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
@@ -978,6 +1005,74 @@ class DashboardStorage:
                 (limit,),
             ).fetchall()
         return [self._row_to_scanner_signal(row) for row in rows]
+
+    def scanner_signal_detail(self, signal_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM scanner_signals WHERE signal_id = ?", (signal_id,)
+            ).fetchone()
+        return self._row_to_scanner_signal(row) if row else None
+
+    def upsert_scanner_dislocation(self, row: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO scanner_dislocations (
+                    dislocation_id, signal_id, event_id, entity, reference_symbol,
+                    target_symbol, reference_move_pct, target_move_pct, gap_pct,
+                    z_score, spread_mean, spread_std, lookback_days, is_dislocated,
+                    direction, dislocation_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(dislocation_id) DO UPDATE SET
+                    event_id=excluded.event_id,
+                    entity=excluded.entity,
+                    reference_symbol=excluded.reference_symbol,
+                    target_symbol=excluded.target_symbol,
+                    reference_move_pct=excluded.reference_move_pct,
+                    target_move_pct=excluded.target_move_pct,
+                    gap_pct=excluded.gap_pct,
+                    z_score=excluded.z_score,
+                    spread_mean=excluded.spread_mean,
+                    spread_std=excluded.spread_std,
+                    lookback_days=excluded.lookback_days,
+                    is_dislocated=excluded.is_dislocated,
+                    direction=excluded.direction,
+                    dislocation_json=excluded.dislocation_json,
+                    created_at=excluded.created_at
+                """,
+                (
+                    row["dislocation_id"],
+                    row["signal_id"],
+                    int(row["event_id"]),
+                    row.get("entity", ""),
+                    row.get("reference_symbol", ""),
+                    row.get("target_symbol", ""),
+                    float(row.get("reference_move_pct", 0.0)),
+                    float(row.get("target_move_pct", 0.0)),
+                    float(row.get("gap_pct", 0.0)),
+                    float(row.get("z_score", 0.0)),
+                    float(row.get("spread_mean", 0.0)),
+                    float(row.get("spread_std", 0.0)),
+                    int(row.get("lookback_days", 0)),
+                    1 if row.get("is_dislocated") else 0,
+                    row.get("direction", ""),
+                    _json(row),
+                    row.get("created_at") or now_iso(),
+                ),
+            )
+
+    def scanner_dislocations(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM scanner_dislocations
+                ORDER BY is_dislocated DESC, ABS(z_score) DESC, created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._row_to_scanner_dislocation(row) for row in rows]
 
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
@@ -1088,6 +1183,30 @@ class DashboardStorage:
             }
         )
         return signal
+
+    def _row_to_scanner_dislocation(self, row: sqlite3.Row) -> Dict[str, Any]:
+        item = _loads(row["dislocation_json"], {})
+        item.update(
+            {
+                "dislocation_id": row["dislocation_id"],
+                "signal_id": row["signal_id"],
+                "event_id": row["event_id"],
+                "entity": row["entity"],
+                "reference_symbol": row["reference_symbol"],
+                "target_symbol": row["target_symbol"],
+                "reference_move_pct": row["reference_move_pct"],
+                "target_move_pct": row["target_move_pct"],
+                "gap_pct": row["gap_pct"],
+                "z_score": row["z_score"],
+                "spread_mean": row["spread_mean"],
+                "spread_std": row["spread_std"],
+                "lookback_days": row["lookback_days"],
+                "is_dislocated": bool(row["is_dislocated"]),
+                "direction": row["direction"],
+                "created_at": row["created_at"],
+            }
+        )
+        return item
 
     def _analysis_dir(self, analysis_date: str, ticker: str, run_id: str) -> Path:
         safe_ticker = "".join(ch for ch in ticker.upper() if ch.isalnum() or ch in ".-_")

@@ -178,3 +178,37 @@ def test_scanner_endpoints_are_available(monkeypatch, tmp_path):
     assert response.json()["signals"]
     assert client.get("/api/scanner/events").json()["events"][0]["title"].startswith("ASML")
     assert client.get("/api/scanner/signals").json()["signals"][0]["us_targets"]
+
+    class StubScanner(scanner.__class__):
+        def detect_dislocations(self, request):
+            return {
+                "dislocations": [
+                    {
+                        "dislocation_id": "dis-1",
+                        "signal_id": "sig-1",
+                        "target_symbol": "NVDA",
+                        "z_score": 2.1,
+                        "is_dislocated": True,
+                    }
+                ],
+                "errors": [],
+            }
+
+        def dislocations(self, limit=100):
+            return [
+                {
+                    "dislocation_id": "dis-1",
+                    "signal_id": "sig-1",
+                    "target_symbol": "NVDA",
+                    "z_score": 2.1,
+                    "is_dislocated": True,
+                }
+            ]
+
+    monkeypatch.setattr(dashboard_app, "scanner", StubScanner(storage=storage))
+    assert client.post("/api/scanner/dislocations/detect", json={}).json()[
+        "dislocations"
+    ][0]["is_dislocated"]
+    assert client.get("/api/scanner/dislocations").json()["dislocations"][0][
+        "target_symbol"
+    ] == "NVDA"

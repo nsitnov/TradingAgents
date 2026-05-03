@@ -38,7 +38,7 @@
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
-| **Cross-market scanner** | **MVP observe-only готов** | Manual/RSS ingest, entity extraction, US target mapping, signal queue; без trading |
+| **Cross-market scanner** | **MVP+dislocation готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector; без trading |
 
 ---
 
@@ -346,7 +346,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 
 ### Месец 2 — Cross-market scanner (твоят use case)
 - Седмица 5: News firehose + translation + entity extraction. **MVP готов: manual/RSS ingest + rule-based extraction.**
-- Седмица 6: Cross-listed mapping + dislocation detector. **Mapping MVP готов; dislocation detector предстои.**
+- Седмица 6: Cross-listed mapping + dislocation detector. **MVP готов: reference-vs-target gap + historical spread Z-score.**
 - Седмица 7: Agent confluence layer + paper trading on signals
 - Седмица 8: Калибрация, A/B vs single-shot analyzer
 
@@ -366,7 +366,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 4. **Следващо**: Пусни batch replay върху 2024-2025 с `tradingagents` provider и отделен cost budget, за да видим реалното agent P&L.
 5. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
 6. **Готово като MVP**: Cross-market ingest — manual/RSS + entity extraction + US target signal queue, но без trading.
-7. **Следващо**: Добави dislocation detector с price moves/Z-score, за да отделяме истински lead-lag възможности от обикновени новини.
+7. **Готово като MVP**: Dislocation detector с price moves/Z-score, за да отделяме истински lead-lag възможности от обикновени новини.
+8. **Следващо**: Agent confluence върху scanner signals, който валидира dislocations преди paper-only signal trading.
 
 ---
 

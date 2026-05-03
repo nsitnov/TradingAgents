@@ -271,6 +271,7 @@ SQLite вече пази:
 - agent replay jobs
 - scanner events
 - scanner signals
+- scanner dislocations
 
 Основни API endpoints:
 
@@ -366,7 +367,8 @@ MVP функционалност:
 - rule-based entity extraction
 - cross-market mapping към US tickers/ETFs
 - bullish/bearish/watch посока от прост keyword sentiment
-- SQLite persistence за events/signals
+- dislocation detector: reference proxy move vs US target move, gap и historical spread Z-score
+- SQLite persistence за events/signals/dislocations
 - Dashboard tab `Scanner`
 
 Първоначални rule families:
@@ -385,6 +387,8 @@ POST /api/scanner/events
 POST /api/scanner/rss
 GET /api/scanner/events
 GET /api/scanner/signals
+POST /api/scanner/dislocations/detect
+GET /api/scanner/dislocations
 ```
 
 ## Daily Automation
@@ -561,6 +565,8 @@ POST /api/scanner/events
 POST /api/scanner/rss
 GET /api/scanner/events
 GET /api/scanner/signals
+POST /api/scanner/dislocations/detect
+GET /api/scanner/dislocations
 ```
 
 Orders / Risk / Audit:

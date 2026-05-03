@@ -21,7 +21,12 @@ from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
-from tradingagents.dashboard.scanner import CrossMarketScanner, RSSIngestRequest, ScannerEventRequest
+from tradingagents.dashboard.scanner import (
+    CrossMarketScanner,
+    DislocationRequest,
+    RSSIngestRequest,
+    ScannerEventRequest,
+)
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.dashboard.validation import validate_backtest_result
 
@@ -239,6 +244,19 @@ def scanner_events(limit: int = Query(default=100, ge=1, le=500)):
 @app.get("/api/scanner/signals")
 def scanner_signals(limit: int = Query(default=100, ge=1, le=500)):
     return {"signals": scanner.signals(limit=limit)}
+
+
+@app.post("/api/scanner/dislocations/detect")
+def detect_scanner_dislocations(request: DislocationRequest):
+    try:
+        return scanner.detect_dislocations(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/scanner/dislocations")
+def scanner_dislocations(limit: int = Query(default=100, ge=1, le=500)):
+    return {"dislocations": scanner.dislocations(limit=limit)}
 
 
 @app.get("/api/orders")
