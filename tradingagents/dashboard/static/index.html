@@ -673,6 +673,9 @@
         const result = selected?.result || {};
         const summary = result.summary || selected?.summary || {};
         const performance = result.performance || {};
+        const validation = result.validation || {};
+        const walkForward = validation.walk_forward || {};
+        const monteCarlo = validation.monte_carlo || {};
         const trades = result.trades || [];
         const history = result.history || [];
         const benchmarks = performance.benchmarks || [];
@@ -728,6 +731,11 @@
                 <div className="metric"><span>Trades</span><strong>{summary.trade_count || 0}</strong></div>
                 <div className="metric"><span>Max Drawdown</span><strong className="neg">{((summary.max_drawdown || 0) * 100).toFixed(2)}%</strong></div>
                 <div className="metric"><span>Skipped</span><strong>{summary.skipped_count || 0}</strong></div>
+              </section>
+              <section className="grid-3">
+                <div className="metric"><span>Walk-Forward Pass</span><strong>{((walkForward.pass_rate || 0) * 100).toFixed(1)}%</strong></div>
+                <div className="metric"><span>MC 5th Percentile</span><strong className={(monteCarlo.return_pct_p05 || 0) >= 0 ? "pos" : "neg"}>{((monteCarlo.return_pct_p05 || 0) * 100).toFixed(2)}%</strong></div>
+                <div className="metric"><span>MC Loss Probability</span><strong className={(monteCarlo.loss_probability || 0) <= 0.25 ? "pos" : "neg"}>{((monteCarlo.loss_probability || 0) * 100).toFixed(1)}%</strong></div>
               </section>
               <section className="panel">
                 <h2>Backtest Equity Curve</h2>

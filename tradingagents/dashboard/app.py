@@ -21,6 +21,7 @@ from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
 from tradingagents.dashboard.storage import DashboardStorage
+from tradingagents.dashboard.validation import validate_backtest_result
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -167,6 +168,15 @@ def get_backtest(backtest_id: str):
     if not result:
         raise HTTPException(status_code=404, detail="Backtest not found")
     return result
+
+
+@app.get("/api/backtests/{backtest_id}/validation")
+def get_backtest_validation(backtest_id: str):
+    record = storage.backtest_detail(backtest_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    result = record.get("result", {})
+    return result.get("validation") or validate_backtest_result(result)
 
 
 @app.get("/api/orders")

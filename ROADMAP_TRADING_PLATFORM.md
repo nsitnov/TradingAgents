@@ -33,7 +33,7 @@
 | Daily automation | Готов | Watchlist + positions, OpenAI budget guard |
 | Upstream sync | Готов | Fork + weekly upstream PR workflow |
 | Docker | Готов | Single-shot run |
-| Backtesting | MVP готов | Isolated replay engine, transaction cost модел, benchmark comparison, SQLite/API history; остава walk-forward/Monte Carlo |
+| Backtesting | MVP+validation готов | Isolated replay engine, transaction cost модел, benchmark comparison, SQLite/API history, walk-forward и Monte Carlo/bootstrap |
 | **Execution / OMS** | **Paper-ready** | Local PaperLedger execution, orders/fills/risk/audit |
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
@@ -139,14 +139,16 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 - `fixed` decision replay за бързи smoke/backtest проверки.
 - `tradingagents` decision provider, който може да пуска оригиналния `TradingAgentsGraph.propagate()` за historical replay.
 - Transaction cost модел: spread, slippage, fee bps и fixed fee.
+- Walk-forward stability и Monte Carlo/bootstrap validation върху equity curve-а.
 - SQLite persistence + API:
   - `POST /api/backtests`
   - `GET /api/backtests`
   - `GET /api/backtests/{backtest_id}`
+  - `GET /api/backtests/{backtest_id}/validation`
 - CLI:
   - `python -m tradingagents.dashboard.backtest --tickers SPY,QQQ --start YYYY-MM-DD --end YYYY-MM-DD`
 
-Остава за research-grade validation: walk-forward windows, Monte Carlo/bootstrap, stress-period presets и по-строга timezone защита срещу lookahead bias.
+Остава за research-grade validation: stress-period presets, out-of-sample holdout presets, batch replay на реалните агенти и по-строга timezone защита срещу lookahead bias.
 
 ---
 

@@ -71,7 +71,10 @@ def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
                 "config": self.config.as_dict(),
                 "summary": {"trade_count": 0, "total_pnl": 0.0},
                 "performance": {},
-                "history": [],
+                "history": [
+                    {"created_at": "2026-01-02T23:59:59+00:00", "equity": 100000},
+                    {"created_at": "2026-01-05T23:59:59+00:00", "equity": 100100},
+                ],
                 "trades": [],
             }
 
@@ -95,3 +98,6 @@ def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
         client.get("/api/backtests/bt-api-1").json()["result"]["summary"]["trade_count"]
         == 0
     )
+    assert "monte_carlo" in client.get(
+        "/api/backtests/bt-api-1/validation"
+    ).json()

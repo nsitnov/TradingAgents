@@ -77,6 +77,8 @@ def test_backtest_replays_fixed_buy_decisions_and_benchmarks():
     assert result["performance"]["total_return_pct"] == 0.02
     assert result["performance"]["benchmarks"][0]["ticker"] == "SPY"
     assert result["performance"]["benchmarks"][0]["return_pct"] == 0.1
+    assert "monte_carlo" in result["validation"]
+    assert "walk_forward" in result["validation"]
 
 
 def test_backtest_can_close_positions_and_realize_pnl():

@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tupl
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from tradingagents.dashboard.performance import portfolio_performance
+from tradingagents.dashboard.validation import validate_backtest_result
 from tradingagents.default_config import DEFAULT_CONFIG
 
 
@@ -354,6 +355,7 @@ class BacktestEngine:
                 "skipped": skipped,
                 "portfolio": ledger,
             }
+            result["validation"] = validate_backtest_result(result)
             return result
         except Exception as exc:
             return {

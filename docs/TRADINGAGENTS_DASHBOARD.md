@@ -300,6 +300,12 @@ Replay engine-ът използва:
 - transaction cost модел: spread bps, slippage bps, fee bps и fixed fee
 - performance метрики от dashboard-а плюс benchmark comparison срещу SPY/QQQ или избран benchmark списък
 
+Всеки нов backtest включва validation секция:
+
+- walk-forward stability върху equity curve-а
+- Monte Carlo/bootstrap сценарии с deterministic seed
+- downside метрики: 5-ти percentile return, probability of loss, average max drawdown
+
 CLI пример:
 
 ```bash
@@ -319,6 +325,7 @@ API endpoints:
 POST /api/backtests
 GET /api/backtests
 GET /api/backtests/{backtest_id}
+GET /api/backtests/{backtest_id}/validation
 ```
 
 ## Daily Automation
@@ -475,6 +482,7 @@ Backtests:
 POST /api/backtests
 GET /api/backtests
 GET /api/backtests/{backtest_id}
+GET /api/backtests/{backtest_id}/validation
 ```
 
 Orders / Risk / Audit:
