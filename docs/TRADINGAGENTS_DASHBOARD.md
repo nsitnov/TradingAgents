@@ -597,6 +597,16 @@ GET /api/broker/positions
 GET /api/broker/orders
 ```
 
+Readiness / Postmortems:
+
+```text
+GET /api/readiness/metrics
+GET /api/readiness/stability-gate
+GET /api/readiness/postmortems
+```
+
+`/api/readiness/stability-gate` никога не включва live trading автоматично. Дори когато checks са зелени, `live_trading_allowed` остава `false`; това е review gate за paper stability, не broker switch.
+
 Automation:
 
 ```text

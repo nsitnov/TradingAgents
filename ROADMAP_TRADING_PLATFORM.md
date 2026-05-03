@@ -39,6 +39,7 @@
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
 | **Cross-market scanner** | **MVP+calibration готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector, deterministic agent confluence, local paper execution, A/B calibration report; без broker trading |
+| **Production readiness** | **MVP готов** | Observability counters, stability gate, trade postmortems; live trading остава disabled |
 
 ---
 
@@ -352,9 +353,9 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 
 ### Месец 3 — Production hardening
 - Седмица 9: Redis Streams/TimescaleDB only if SQLite + in-process workers are the bottleneck.
-- Седмица 10: Observability (Prometheus/Grafana), error budgets
-- Седмица 11: Postmortem agent + weekly review automation
-- Седмица 12: Решение за малък live capital само ако paper metrics, reconciliation и risk gates са стабилни.
+- Седмица 10: Observability (Prometheus/Grafana), error budgets. **MVP готов: readiness metrics endpoint + dashboard tab.**
+- Седмица 11: Postmortem agent + weekly review automation. **MVP готов: deterministic trade postmortems; weekly email automation вече е налична.**
+- Седмица 12: Решение за малък live capital само ако paper metrics, reconciliation и risk gates са стабилни. **Gate готов; live trading остава disabled.**
 
 ---
 
@@ -370,7 +371,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 8. **Готово като MVP**: Agent confluence върху scanner signals, който валидира dislocations и прави paper-only candidate queue.
 9. **Готово като MVP**: Local paper execution на scanner confluence candidates през съществуващия PaperLedger/OMS, без broker account.
 10. **Готово като MVP**: Калибрация/A-B отчет за scanner strategy спрямо single-shot analyzer по orders/fills/closed-trade metrics.
-11. **Следващо**: Production hardening — observability, postmortem agent и 1-месечен paper stability gate преди какъвто и да е live capital.
+11. **Готово като MVP**: Production hardening readiness layer — observability counters, postmortems и 30-day paper stability gate.
+12. **Остава извън автоматична имплементация**: реален live capital. Това изисква минимум 1 месец стабилен paper режим и изрично ръчно решение; платформата не го включва сама.
 
 ---
 

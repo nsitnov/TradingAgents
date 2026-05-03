@@ -21,6 +21,7 @@ from tradingagents.dashboard.costs import refresh_openai_costs
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
 from tradingagents.dashboard.oms import RiskConfig
+from tradingagents.dashboard.readiness import ReadinessReporter
 from tradingagents.dashboard.scanner import (
     CrossMarketScanner,
     DislocationRequest,
@@ -52,6 +53,7 @@ scanner = CrossMarketScanner(storage=storage)
 scanner_confluence = ScannerConfluenceReviewer(storage=storage)
 scanner_executor = ScannerPaperExecutor(storage=storage, ledger=ledger)
 scanner_calibration = ScannerCalibrationReporter(storage=storage)
+readiness_reporter = ReadinessReporter(storage=storage)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -331,6 +333,21 @@ def risk_decisions(limit: int = Query(default=100, ge=1, le=500)):
 @app.get("/api/audit/events")
 def audit_events(limit: int = Query(default=100, ge=1, le=500)):
     return {"audit_events": storage.audit_events(limit=limit)}
+
+
+@app.get("/api/readiness/metrics")
+def readiness_metrics():
+    return readiness_reporter.metrics()
+
+
+@app.get("/api/readiness/stability-gate")
+def readiness_stability_gate():
+    return readiness_reporter.stability_gate()
+
+
+@app.get("/api/readiness/postmortems")
+def readiness_postmortems(limit: int = Query(default=100, ge=1, le=500)):
+    return readiness_reporter.trade_postmortems(limit=limit)
 
 
 @app.get("/api/broker/config")

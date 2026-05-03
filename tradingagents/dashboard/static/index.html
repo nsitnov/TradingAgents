@@ -226,6 +226,9 @@
         const [automationConfig, setAutomationConfig] = useState(null);
         const [automationHistory, setAutomationHistory] = useState([]);
         const [openaiCosts, setOpenaiCosts] = useState(null);
+        const [readinessMetrics, setReadinessMetrics] = useState(null);
+        const [stabilityGate, setStabilityGate] = useState(null);
+        const [postmortems, setPostmortems] = useState({ summary: {}, postmortems: [] });
         const [backtestForm, setBacktestForm] = useState({
           tickers: "SPY",
           start: defaultBacktestStart,
@@ -284,6 +287,7 @@
           refreshPortfolioHistory();
           refreshAutomation();
           refreshCosts();
+          refreshReadiness();
           refreshBacktests();
           refreshAgentReplays();
           refreshScanner();
@@ -320,6 +324,17 @@
         async function refreshCosts() {
           const res = await fetch("/api/costs/openai");
           if (res.ok) setOpenaiCosts(await res.json());
+        }
+
+        async function refreshReadiness() {
+          const [metricsRes, gateRes, postmortemsRes] = await Promise.all([
+            fetch("/api/readiness/metrics"),
+            fetch("/api/readiness/stability-gate"),
+            fetch("/api/readiness/postmortems")
+          ]);
+          if (metricsRes.ok) setReadinessMetrics(await metricsRes.json());
+          if (gateRes.ok) setStabilityGate(await gateRes.json());
+          if (postmortemsRes.ok) setPostmortems(await postmortemsRes.json());
         }
 
         async function refreshBacktests() {
@@ -589,6 +604,7 @@
                   ["agentReplay", "Agent Replay"],
                   ["scanner", "Scanner"],
                   ["automation", "Automation"],
+                  ["readiness", "Readiness"],
                   ["history", "Analysis History"],
                   ["costs", "OpenAI Spend"]
                 ].map(([key, label]) => (
@@ -619,6 +635,7 @@
             {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
             {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} calibration={scannerCalibration} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} executeConfluence={executeScannerConfluence} refresh={refreshScanner} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
+            {tab === "readiness" && <ReadinessDashboard metrics={readinessMetrics} gate={stabilityGate} postmortems={postmortems} refresh={refreshReadiness} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
           </>
@@ -1267,6 +1284,75 @@
                     {history.map((job) => <tr key={job.id}><td>{job.job_date}</td><td>{job.status}</td><td>{(job.tickers || []).join(", ")}</td><td>{job.started_at}</td></tr>)}
                   </tbody>
                 </table>
+              </section>
+            </section>
+          </main>
+        );
+      }
+
+      function ReadinessDashboard({ metrics, gate, postmortems, refresh }) {
+        const items = gate?.conditions || [];
+        const closed = postmortems?.postmortems || [];
+        const summary = postmortems?.summary || {};
+        return (
+          <main className="wide-main">
+            <section className="content">
+              <section className="panel">
+                <div className="toolbar">
+                  <h2>Production Readiness</h2>
+                  <button onClick={refresh}>Refresh</button>
+                </div>
+                <section className="grid-3">
+                  <div className="metric"><span>Status</span><strong className={gate?.status === "ready_for_review" ? "pos" : "neg"}>{gate?.status || "unknown"}</strong></div>
+                  <div className="metric"><span>Live Trading</span><strong className="neg">{gate?.live_trading_allowed ? "Allowed" : "Disabled"}</strong></div>
+                  <div className="metric"><span>Paper Days</span><strong>{gate?.paper_days || 0}</strong></div>
+                  <div className="metric"><span>Orders</span><strong>{metrics?.orders_total || 0}</strong></div>
+                  <div className="metric"><span>Scanner Executions</span><strong>{metrics?.scanner_paper_executions_total || 0}</strong></div>
+                  <div className="metric"><span>Max Drawdown</span><strong className="neg">{((gate?.max_drawdown || 0) * 100).toFixed(1)}%</strong></div>
+                </section>
+              </section>
+              <section className="panel">
+                <h2>Stability Gate</h2>
+                <table>
+                  <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+                  <tbody>
+                    {items.length === 0 && <tr><td colSpan="3" className="muted">No readiness checks loaded.</td></tr>}
+                    {items.map((item) => (
+                      <tr key={item.name}>
+                        <td>{item.name}</td>
+                        <td className={item.passed ? "pos" : "neg"}>{item.passed ? "pass" : "block"}</td>
+                        <td>{item.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              <section className="panel">
+                <h2>Trade Postmortems</h2>
+                <section className="grid-3">
+                  <div className="metric"><span>Closed</span><strong>{summary.closed_trades || 0}</strong></div>
+                  <div className="metric"><span>Wins</span><strong className="pos">{summary.wins || 0}</strong></div>
+                  <div className="metric"><span>Total P&L</span><strong className={(summary.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(summary.total_pnl || 0)}</strong></div>
+                </section>
+                <div className="scroll-table">
+                  <table>
+                    <thead><tr><th>Exit</th><th>Ticker</th><th>Source</th><th>Result</th><th>P&L</th><th>Return</th><th>Notes</th></tr></thead>
+                    <tbody>
+                      {closed.length === 0 && <tr><td colSpan="7" className="muted">No closed trades yet.</td></tr>}
+                      {closed.map((item, index) => (
+                        <tr key={`${item.ticker}-${item.exit_date}-${index}`}>
+                          <td>{item.exit_date}</td>
+                          <td>{item.ticker}</td>
+                          <td>{item.source}</td>
+                          <td className={item.verdict === "win" ? "pos" : item.verdict === "loss" ? "neg" : ""}>{item.verdict}</td>
+                          <td className={(item.pnl || 0) >= 0 ? "pos" : "neg"}>{money(item.pnl)}</td>
+                          <td>{((item.return_pct || 0) * 100).toFixed(2)}%</td>
+                          <td>{(item.notes || []).join(" ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             </section>
           </main>
