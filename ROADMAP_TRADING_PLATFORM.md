@@ -140,15 +140,20 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 - `tradingagents` decision provider, който може да пуска оригиналния `TradingAgentsGraph.propagate()` за historical replay.
 - Transaction cost модел: spread, slippage, fee bps и fixed fee.
 - Walk-forward stability и Monte Carlo/bootstrap validation върху equity curve-а.
+- Agent Replay batch jobs за реалния `TradingAgentsGraph` с progress, cancel и hard `max_decisions` guard.
 - SQLite persistence + API:
   - `POST /api/backtests`
   - `GET /api/backtests`
   - `GET /api/backtests/{backtest_id}`
   - `GET /api/backtests/{backtest_id}/validation`
+  - `POST /api/agent-replays`
+  - `GET /api/agent-replays`
+  - `GET /api/agent-replays/{job_id}`
+  - `POST /api/agent-replays/{job_id}/cancel`
 - CLI:
   - `python -m tradingagents.dashboard.backtest --tickers SPY,QQQ --start YYYY-MM-DD --end YYYY-MM-DD`
 
-Остава за research-grade validation: stress-period presets, out-of-sample holdout presets, batch replay на реалните агенти и по-строга timezone защита срещу lookahead bias.
+Остава за research-grade validation: stress-period presets, out-of-sample holdout presets, real agent replay reports по тикер/дата и по-строга timezone защита срещу lookahead bias.
 
 ---
 

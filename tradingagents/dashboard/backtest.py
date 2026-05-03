@@ -5,7 +5,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -280,11 +280,15 @@ class BacktestEngine:
         *,
         price_provider: Optional[PriceProvider] = None,
         decision_provider: Optional[DecisionProvider] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
     ) -> None:
         config.validate()
         self.config = config
         self.price_provider = price_provider or HistoricalPriceProvider()
         self.decision_provider = decision_provider or self._decision_provider(config)
+        self.progress_callback = progress_callback
+        self.should_cancel = should_cancel or (lambda: False)
 
     def run(self) -> Dict[str, Any]:
         backtest_id = str(uuid.uuid4())
@@ -300,9 +304,16 @@ class BacktestEngine:
             self.price_provider.prepare(symbols, self.config.start, self.config.end)
             history.append(self._snapshot(ledger, self.config.start, phase="initial"))
 
-            for day in _business_days(self.config.start, self.config.end):
+            days = list(_business_days(self.config.start, self.config.end))
+            total_steps = len(days) * len(self.config.tickers)
+            completed_steps = 0
+            for day in days:
+                if self.should_cancel():
+                    raise BacktestCancelled("Backtest cancelled")
                 self._mark_positions(ledger, day, skipped)
                 for ticker in self.config.tickers:
+                    if self.should_cancel():
+                        raise BacktestCancelled("Backtest cancelled")
                     try:
                         price = self.price_provider.close(ticker, day)
                         decision = normalize_decision(
@@ -331,6 +342,19 @@ class BacktestEngine:
                                 "error": str(exc),
                             }
                         )
+                    finally:
+                        completed_steps += 1
+                        self._emit_progress(
+                            {
+                                "completed_steps": completed_steps,
+                                "total_steps": total_steps,
+                                "ticker": ticker,
+                                "trade_date": day.isoformat(),
+                                "trade_count": len(trades),
+                                "skipped_count": len(skipped),
+                                "equity": float(ledger.get("equity", 0.0)),
+                            }
+                        )
                 self._mark_positions(ledger, day, skipped)
                 history.append(self._snapshot(ledger, day, phase="close"))
 
@@ -357,6 +381,22 @@ class BacktestEngine:
             }
             result["validation"] = validate_backtest_result(result)
             return result
+        except BacktestCancelled as exc:
+            return {
+                "backtest_id": backtest_id,
+                "status": "cancelled",
+                "started_at": started_at,
+                "ended_at": now_iso(),
+                "config": self.config.as_dict(),
+                "summary": {},
+                "performance": {},
+                "history": history,
+                "trades": trades,
+                "decisions": decisions,
+                "skipped": skipped,
+                "portfolio": ledger,
+                "error": str(exc),
+            }
         except Exception as exc:
             return {
                 "backtest_id": backtest_id,
@@ -373,6 +413,10 @@ class BacktestEngine:
                 "portfolio": ledger,
                 "error": str(exc),
             }
+
+    def _emit_progress(self, payload: Dict[str, Any]) -> None:
+        if self.progress_callback:
+            self.progress_callback(payload)
 
     def _decision_provider(self, config: BacktestConfig) -> DecisionProvider:
         if config.decision_provider == "tradingagents":
@@ -593,6 +637,10 @@ def _business_days(start: date, end: date) -> Iterable[date]:
         if current.weekday() < 5:
             yield current
         current += timedelta(days=1)
+
+
+class BacktestCancelled(Exception):
+    pass
 
 
 def _parse_symbols(raw: str) -> List[str]:

@@ -268,6 +268,7 @@ SQLite вече пази:
 - risk decisions
 - audit events
 - backtests
+- agent replay jobs
 
 Основни API endpoints:
 
@@ -326,6 +327,30 @@ POST /api/backtests
 GET /api/backtests
 GET /api/backtests/{backtest_id}
 GET /api/backtests/{backtest_id}/validation
+```
+
+## Agent Replay Batch Jobs
+
+Agent Replay е batch wrapper около backtest engine-а за historical runs с реалния `TradingAgentsGraph`. Това е следващата проверка преди cross-market scanner-а: дали агентите дават стабилен virtual edge, а не само единичен добър run.
+
+Safety ограничения:
+
+- default `decision_provider=tradingagents`
+- hard `max_decisions` guard; default от `TRADINGAGENTS_REPLAY_MAX_DECISIONS`, fallback `25`
+- само един активен replay job наведнъж
+- progress се пази в SQLite
+- cancel endpoint спира job-а при следващия decision boundary
+- завършен replay автоматично се записва и като normal backtest result
+
+За евтин smoke test може да се използва `decision_provider=fixed`, без LLM calls.
+
+API endpoints:
+
+```text
+POST /api/agent-replays
+GET /api/agent-replays
+GET /api/agent-replays/{job_id}
+POST /api/agent-replays/{job_id}/cancel
 ```
 
 ## Daily Automation
@@ -483,6 +508,15 @@ POST /api/backtests
 GET /api/backtests
 GET /api/backtests/{backtest_id}
 GET /api/backtests/{backtest_id}/validation
+```
+
+Agent Replay:
+
+```text
+POST /api/agent-replays
+GET /api/agent-replays
+GET /api/agent-replays/{job_id}
+POST /api/agent-replays/{job_id}/cancel
 ```
 
 Orders / Risk / Audit:

@@ -101,3 +101,49 @@ def test_backtest_endpoints_are_available(monkeypatch, tmp_path):
     assert "monte_carlo" in client.get(
         "/api/backtests/bt-api-1/validation"
     ).json()
+
+
+def test_agent_replay_endpoints_are_available(monkeypatch):
+    monkeypatch.delenv("TRADINGAGENTS_DASHBOARD_PASSWORD", raising=False)
+
+    class StubAgentReplayService:
+        def start(self, request):
+            return {
+                "job_id": "replay-1",
+                "status": "queued",
+                "started_at": "2026-01-05T08:00:00+00:00",
+                "config": request.as_config(),
+                "progress": {"pct_complete": 0.0},
+                "result": {},
+                "error": None,
+            }
+
+        def list_jobs(self, limit=50):
+            return [{"job_id": "replay-1", "status": "completed"}]
+
+        def get_job(self, job_id):
+            return {"job_id": job_id, "status": "completed", "result": {"summary": {}}}
+
+        def cancel(self, job_id):
+            return True
+
+    monkeypatch.setattr(dashboard_app, "agent_replay_service", StubAgentReplayService())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent-replays",
+        json={
+            "tickers": ["SPY"],
+            "start": "2026-01-05",
+            "end": "2026-01-05",
+            "decision_provider": "fixed",
+            "fixed_decision": "Hold",
+            "max_decisions": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "replay-1"
+    assert client.get("/api/agent-replays").json()["jobs"][0]["job_id"] == "replay-1"
+    assert client.get("/api/agent-replays/replay-1").json()["status"] == "completed"
+    assert client.post("/api/agent-replays/replay-1/cancel").json()["status"] == "cancel_requested"

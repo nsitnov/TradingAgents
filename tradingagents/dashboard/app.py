@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
+from tradingagents.dashboard.agent_replay import AgentReplayRequest, AgentReplayService
 from tradingagents.dashboard.automation import (
     load_automation_config,
     run_daily_once,
@@ -31,6 +32,7 @@ storage = DashboardStorage()
 ledger = PaperLedger(storage=storage)
 ledger.sync_to_storage()
 store = RunStore(ledger=ledger, storage=storage)
+agent_replay_service = AgentReplayService(storage=storage)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -177,6 +179,36 @@ def get_backtest_validation(backtest_id: str):
         raise HTTPException(status_code=404, detail="Backtest not found")
     result = record.get("result", {})
     return result.get("validation") or validate_backtest_result(result)
+
+
+@app.post("/api/agent-replays")
+def create_agent_replay(request: AgentReplayRequest):
+    try:
+        return agent_replay_service.start(request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/agent-replays")
+def list_agent_replays(limit: int = Query(default=50, ge=1, le=200)):
+    return {"jobs": agent_replay_service.list_jobs(limit=limit)}
+
+
+@app.get("/api/agent-replays/{job_id}")
+def get_agent_replay(job_id: str):
+    job = agent_replay_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Agent replay job not found")
+    return job
+
+
+@app.post("/api/agent-replays/{job_id}/cancel")
+def cancel_agent_replay(job_id: str):
+    if not agent_replay_service.cancel(job_id):
+        raise HTTPException(status_code=404, detail="Active agent replay job not found")
+    return {"status": "cancel_requested"}
 
 
 @app.get("/api/orders")

@@ -241,6 +241,22 @@
         const [selectedBacktest, setSelectedBacktest] = useState(null);
         const [backtestLoading, setBacktestLoading] = useState(false);
         const [backtestError, setBacktestError] = useState("");
+        const [agentReplayForm, setAgentReplayForm] = useState({
+          tickers: "SPY",
+          start: defaultBacktestStart,
+          end: today,
+          max_decisions: 25,
+          decision_provider: "tradingagents",
+          fixed_decision: "Hold",
+          research_depth: 1,
+          llm_provider: "openai",
+          shallow_thinker: "gpt-5.4-mini",
+          deep_thinker: "gpt-5.4"
+        });
+        const [agentReplayJobs, setAgentReplayJobs] = useState([]);
+        const [selectedAgentReplay, setSelectedAgentReplay] = useState(null);
+        const [agentReplayLoading, setAgentReplayLoading] = useState(false);
+        const [agentReplayError, setAgentReplayError] = useState("");
         const [error, setError] = useState("");
         const sourceRef = useRef(null);
 
@@ -251,6 +267,7 @@
           refreshAutomation();
           refreshCosts();
           refreshBacktests();
+          refreshAgentReplays();
           return () => sourceRef.current?.close();
         }, []);
 
@@ -332,6 +349,56 @@
           if (res.ok) setSelectedBacktest(await res.json());
         }
 
+        async function refreshAgentReplays() {
+          const res = await fetch("/api/agent-replays");
+          if (res.ok) setAgentReplayJobs((await res.json()).jobs || []);
+        }
+
+        async function startAgentReplay(event) {
+          event.preventDefault();
+          setAgentReplayError("");
+          setAgentReplayLoading(true);
+          const payload = {
+            tickers: agentReplayForm.tickers.split(",").map((item) => item.trim()).filter(Boolean),
+            start: agentReplayForm.start,
+            end: agentReplayForm.end,
+            max_decisions: Number(agentReplayForm.max_decisions || 25),
+            decision_provider: agentReplayForm.decision_provider,
+            fixed_decision: agentReplayForm.fixed_decision,
+            research_depth: Number(agentReplayForm.research_depth || 1),
+            llm_provider: agentReplayForm.llm_provider,
+            shallow_thinker: agentReplayForm.shallow_thinker,
+            deep_thinker: agentReplayForm.deep_thinker
+          };
+          try {
+            const res = await fetch("/api/agent-replays", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setAgentReplayError(body.detail || "Could not start agent replay");
+              return;
+            }
+            setSelectedAgentReplay(body);
+            refreshAgentReplays();
+          } finally {
+            setAgentReplayLoading(false);
+          }
+        }
+
+        async function openAgentReplay(jobId) {
+          const res = await fetch(`/api/agent-replays/${jobId}`);
+          if (res.ok) setSelectedAgentReplay(await res.json());
+        }
+
+        async function cancelAgentReplay(jobId) {
+          await fetch(`/api/agent-replays/${jobId}/cancel`, { method: "POST" });
+          refreshAgentReplays();
+          openAgentReplay(jobId);
+        }
+
         async function startRun(event) {
           event.preventDefault();
           setError("");
@@ -395,6 +462,7 @@
                   ["live", "Live Runs"],
                   ["portfolio", "Paper Portfolio"],
                   ["backtests", "Backtests"],
+                  ["agentReplay", "Agent Replay"],
                   ["automation", "Automation"],
                   ["history", "Analysis History"],
                   ["costs", "OpenAI Spend"]
@@ -423,6 +491,7 @@
             )}
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
+            {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
             {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
             {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
@@ -775,6 +844,92 @@
                   </div>
                 </section>
               </div>
+            </section>
+          </main>
+        );
+      }
+
+      function AgentReplayDashboard({ form, setForm, jobs, selected, loading, error, startReplay, openReplay, cancelReplay, refresh }) {
+        const progress = selected?.progress || {};
+        const result = selected?.result || {};
+        const summary = result.summary || {};
+        const validation = result.validation || {};
+        const monteCarlo = validation.monte_carlo || {};
+        const active = selected && !["completed", "error", "cancelled"].includes(selected.status);
+        return (
+          <main>
+            <aside className="sidebar">
+              <section className="panel">
+                <h2>Agent Replay</h2>
+                <form onSubmit={startReplay}>
+                  <div className="field"><label>Tickers</label><input value={form.tickers} onChange={(e) => setForm({ ...form, tickers: e.target.value.toUpperCase() })} /></div>
+                  <div className="grid-2">
+                    <div className="field"><label>Start</label><input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></div>
+                    <div className="field"><label>End</label><input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field"><label>Provider</label><select value={form.decision_provider} onChange={(e) => setForm({ ...form, decision_provider: e.target.value })}><option value="tradingagents">tradingagents</option><option value="fixed">fixed</option></select></div>
+                    <div className="field"><label>Max decisions</label><input type="number" min="1" value={form.max_decisions} onChange={(e) => setForm({ ...form, max_decisions: e.target.value })} /></div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field"><label>Depth</label><select value={form.research_depth} onChange={(e) => setForm({ ...form, research_depth: e.target.value })}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
+                    <div className="field"><label>Fixed decision</label><select value={form.fixed_decision} onChange={(e) => setForm({ ...form, fixed_decision: e.target.value })}>{["Hold", "Buy", "Overweight", "Underweight", "Sell"].map((item) => <option key={item}>{item}</option>)}</select></div>
+                  </div>
+                  <div className="field"><label>Provider</label><select value={form.llm_provider} onChange={(e) => setForm({ ...form, llm_provider: e.target.value })}>{["openai", "google", "anthropic", "xai", "deepseek", "qwen", "glm", "openrouter", "ollama"].map((p) => <option key={p}>{p}</option>)}</select></div>
+                  <div className="field"><label>Quick model</label><input value={form.shallow_thinker} onChange={(e) => setForm({ ...form, shallow_thinker: e.target.value })} /></div>
+                  <div className="field"><label>Deep model</label><input value={form.deep_thinker} onChange={(e) => setForm({ ...form, deep_thinker: e.target.value })} /></div>
+                  <div className="actions">
+                    <button className="primary" type="submit" disabled={loading}>{loading ? "Starting" : "Start Replay"}</button>
+                    <button type="button" onClick={refresh}>Refresh</button>
+                  </div>
+                  {error && <p className="neg">{error}</p>}
+                </form>
+              </section>
+              <section className="panel">
+                <h2>Replay Jobs</h2>
+                <div className="agent-list">
+                  {jobs.length === 0 && <p className="muted">No replay jobs yet.</p>}
+                  {jobs.map((job) => (
+                    <button key={job.job_id} onClick={() => openReplay(job.job_id)}>
+                      {(job.config?.tickers || []).join(", ") || "Replay"} · {job.status} · {((job.progress?.pct_complete || 0) * 100).toFixed(0)}%
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </aside>
+            <section className="content">
+              <section className="grid-3">
+                <div className="metric"><span>Status</span><strong>{selected?.status || "--"}</strong></div>
+                <div className="metric"><span>Progress</span><strong>{((progress.pct_complete || 0) * 100).toFixed(1)}%</strong></div>
+                <div className="metric"><span>Decisions</span><strong>{progress.completed_steps || 0} / {progress.total_steps || 0}</strong></div>
+              </section>
+              <section className="grid-3">
+                <div className="metric"><span>Total P&L</span><strong className={(summary.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(summary.total_pnl)}</strong></div>
+                <div className="metric"><span>Total Return</span><strong className={(summary.total_return_pct || 0) >= 0 ? "pos" : "neg"}>{((summary.total_return_pct || 0) * 100).toFixed(2)}%</strong></div>
+                <div className="metric"><span>MC Loss Probability</span><strong>{((monteCarlo.loss_probability || 0) * 100).toFixed(1)}%</strong></div>
+              </section>
+              <section className="panel">
+                <div className="toolbar">
+                  <h2>Selected Replay</h2>
+                  <div className="actions">
+                    {selected?.job_id && <button onClick={() => openReplay(selected.job_id)}>Refresh</button>}
+                    {active && <button className="danger" onClick={() => cancelReplay(selected.job_id)}>Cancel</button>}
+                  </div>
+                </div>
+                {!selected && <p className="muted">Select or start an agent replay job.</p>}
+                {selected?.error && <p className="neg">{selected.error}</p>}
+                {selected && (
+                  <table>
+                    <tbody>
+                      <tr><th>Started</th><td>{selected.started_at || "--"}</td></tr>
+                      <tr><th>Ended</th><td>{selected.ended_at || "--"}</td></tr>
+                      <tr><th>Tickers</th><td>{(selected.config?.tickers || []).join(", ")}</td></tr>
+                      <tr><th>Period</th><td>{selected.config?.start || "--"} → {selected.config?.end || "--"}</td></tr>
+                      <tr><th>Backtest ID</th><td>{result.backtest_id || "--"}</td></tr>
+                    </tbody>
+                  </table>
+                )}
+              </section>
             </section>
           </main>
         );

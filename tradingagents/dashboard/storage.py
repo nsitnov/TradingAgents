@@ -199,6 +199,18 @@ class DashboardStorage:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS agent_replay_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    config_json TEXT NOT NULL,
+                    progress_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    error TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_unique
                 ON trades(run_id, ticker, action, trade_date, created_at);
                 """
@@ -783,6 +795,59 @@ class DashboardStorage:
             ).fetchone()
         return self._row_to_backtest(row, include_result=True) if row else None
 
+    def upsert_agent_replay_job(self, job: Dict[str, Any]) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_replay_jobs (
+                    job_id, status, started_at, ended_at, config_json,
+                    progress_json, result_json, error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id) DO UPDATE SET
+                    status=excluded.status,
+                    ended_at=excluded.ended_at,
+                    config_json=excluded.config_json,
+                    progress_json=excluded.progress_json,
+                    result_json=excluded.result_json,
+                    error=excluded.error,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    job["job_id"],
+                    job.get("status", "unknown"),
+                    job.get("started_at") or now_iso(),
+                    job.get("ended_at"),
+                    _json(job.get("config", {})),
+                    _json(job.get("progress", {})),
+                    _json(job.get("result", {})),
+                    job.get("error"),
+                    now_iso(),
+                ),
+            )
+
+    def agent_replay_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM agent_replay_jobs
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            self._row_to_agent_replay_job(row, include_result=False)
+            for row in rows
+        ]
+
+    def agent_replay_job_detail(self, job_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_replay_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        return self._row_to_agent_replay_job(row, include_result=True) if row else None
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],
@@ -833,6 +898,22 @@ class DashboardStorage:
             "ended_at": row["ended_at"],
             "config": _loads(row["config_json"], {}),
             "summary": _loads(row["summary_json"], {}),
+            "error": row["error"],
+        }
+        if include_result:
+            item["result"] = _loads(row["result_json"], {})
+        return item
+
+    def _row_to_agent_replay_job(
+        self, row: sqlite3.Row, *, include_result: bool
+    ) -> Dict[str, Any]:
+        item = {
+            "job_id": row["job_id"],
+            "status": row["status"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+            "config": _loads(row["config_json"], {}),
+            "progress": _loads(row["progress_json"], {}),
             "error": row["error"],
         }
         if include_result:
