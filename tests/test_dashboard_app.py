@@ -244,3 +244,21 @@ def test_scanner_endpoints_are_available(monkeypatch, tmp_path):
     assert client.get("/api/scanner/confluence/reviews").json()["reviews"][0][
         "action"
     ] == "Buy"
+
+    class StubScannerExecutor:
+        def execute(self, request):
+            return {
+                "executions": [
+                    {
+                        "review_id": "review-1",
+                        "target_symbol": "NVDA",
+                        "execution": {"status": "filled", "order_id": "order-1"},
+                    }
+                ],
+                "errors": [],
+            }
+
+    monkeypatch.setattr(dashboard_app, "scanner_executor", StubScannerExecutor())
+    assert client.post("/api/scanner/confluence/execute", json={}).json()[
+        "executions"
+    ][0]["execution"]["status"] == "filled"

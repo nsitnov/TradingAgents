@@ -66,6 +66,10 @@ class ScannerConfluenceReviewer:
                 )
                 continue
             review = self._review_one(dislocation, signal, event, request)
+            existing = self.storage.scanner_confluence_review_detail(review["review_id"])
+            if existing and existing.get("execution"):
+                review["execution"] = existing["execution"]
+                review["execution_status"] = existing.get("execution_status")
             self.storage.upsert_scanner_confluence_review(review)
             reviews.append(review)
         return {"reviews": reviews, "errors": errors}

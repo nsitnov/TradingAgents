@@ -38,7 +38,7 @@
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
 | **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
-| **Cross-market scanner** | **MVP+confluence готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector, deterministic agent confluence; без broker trading |
+| **Cross-market scanner** | **MVP+paper execution готов** | Manual/RSS ingest, entity extraction, US target mapping, Z-score dislocation detector, deterministic agent confluence, local paper execution; без broker trading |
 
 ---
 
@@ -252,7 +252,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 ### 6.5 Implementation план (по фази)
 - **Фаза 1** (1–2 седмици): RSS/API ingest + DeepL + entity extraction + cross-listed map + log в DB. Без trading. Цел: 100+ опростени signals/ден за наблюдение.
 - **Фаза 2** (2–3 седмици): Dislocation detector + back-test срещу 1 година от news. Калибрирай Z-score thresholds.
-- **Фаза 3** (2 седмици): Agent confluence + paper-only signal trading. **Confluence MVP готов; следва local paper execution, без broker.**
+- **Фаза 3** (2 седмици): Agent confluence + paper-only signal trading. **MVP готов: local PaperLedger/OMS execution, без broker.**
 - **Фаза 4** (1 месец paper): Стартира паралелно с твоя existing analysis loop. Сравнявай PnL, hit rate, slippage.
 - **Фаза 5**: Малък live capital (например $5k–$10k) с hard cap $500/trade. Постепенно scale-вай.
 
@@ -347,7 +347,7 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 ### Месец 2 — Cross-market scanner (твоят use case)
 - Седмица 5: News firehose + translation + entity extraction. **MVP готов: manual/RSS ingest + rule-based extraction.**
 - Седмица 6: Cross-listed mapping + dislocation detector. **MVP готов: reference-vs-target gap + historical spread Z-score.**
-- Седмица 7: Agent confluence layer + paper trading on signals. **Confluence MVP готов; следва paper-only execution върху candidate queue.**
+- Седмица 7: Agent confluence layer + paper trading on signals. **MVP готов: confluence candidates се изпълняват през local PaperLedger/OMS, без broker.**
 - Седмица 8: Калибрация, A/B vs single-shot analyzer
 
 ### Месец 3 — Production hardening
@@ -368,7 +368,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 6. **Готово като MVP**: Cross-market ingest — manual/RSS + entity extraction + US target signal queue, но без trading.
 7. **Готово като MVP**: Dislocation detector с price moves/Z-score, за да отделяме истински lead-lag възможности от обикновени новини.
 8. **Готово като MVP**: Agent confluence върху scanner signals, който валидира dislocations и прави paper-only candidate queue.
-9. **Следващо**: Local paper execution на scanner confluence candidates през съществуващия PaperLedger/OMS, без broker account.
+9. **Готово като MVP**: Local paper execution на scanner confluence candidates през съществуващия PaperLedger/OMS, без broker account.
+10. **Следващо**: Калибрация/A-B отчет за scanner strategy спрямо single-shot analyzer и benchmark PnL.
 
 ---
 

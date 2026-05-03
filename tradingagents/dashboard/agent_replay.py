@@ -209,9 +209,9 @@ class AgentReplayService:
                     "pct_complete": 1.0,
                 }
             latest["progress"] = progress
-            self.storage.upsert_agent_replay_job(latest)
             if result.get("status") == "completed":
                 self.storage.upsert_backtest(result)
+            self.storage.upsert_agent_replay_job(latest)
         except Exception as exc:
             latest = self.storage.agent_replay_job_detail(job_id) or job
             latest.update(

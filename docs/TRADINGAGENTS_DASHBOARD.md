@@ -359,7 +359,7 @@ POST /api/agent-replays/{job_id}/cancel
 
 ## Cross-Market Scanner MVP
 
-Scanner-ът е observe-only слой. Той не създава orders, не пипа PaperLedger-а и не извиква broker adapter-и. Целта е да събира foreign/macro/news събития, да ги map-ва към US instruments и да държи signal queue за наблюдение.
+Scanner-ът започва като observe-only слой и вече може да подава валидирани confluence candidates към local paper OMS. Той не извиква broker adapter-и. Целта е да събира foreign/macro/news събития, да ги map-ва към US instruments, да държи signal queue и да тества paper-only execution през същите risk gates като нормалните агентски решения.
 
 MVP функционалност:
 
@@ -370,7 +370,8 @@ MVP функционалност:
 - bullish/bearish/watch посока от прост keyword sentiment
 - dislocation detector: reference proxy move vs US target move, gap и historical spread Z-score
 - deterministic confluence review: quantitative validator, news mapper, liquidity proxy и hard risk gate
-- paper-only candidate queue; не създава orders и не пипа broker/PaperLedger execution
+- paper-only candidate queue
+- local paper execution на валидирани candidates през `PaperOrderService`, без broker account
 - SQLite persistence за events/signals/dislocations/confluence reviews
 - Dashboard tab `Scanner`
 
@@ -394,6 +395,7 @@ POST /api/scanner/dislocations/detect
 GET /api/scanner/dislocations
 POST /api/scanner/confluence/review
 GET /api/scanner/confluence/reviews
+POST /api/scanner/confluence/execute
 ```
 
 ## Daily Automation
@@ -574,6 +576,7 @@ POST /api/scanner/dislocations/detect
 GET /api/scanner/dislocations
 POST /api/scanner/confluence/review
 GET /api/scanner/confluence/reviews
+POST /api/scanner/confluence/execute
 ```
 
 Orders / Risk / Audit:

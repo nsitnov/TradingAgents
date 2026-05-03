@@ -1144,6 +1144,14 @@ class DashboardStorage:
             ).fetchall()
         return [self._row_to_scanner_confluence_review(row) for row in rows]
 
+    def scanner_confluence_review_detail(self, review_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM scanner_confluence_reviews WHERE review_id = ?",
+                (review_id,),
+            ).fetchone()
+        return self._row_to_scanner_confluence_review(row) if row else None
+
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
             "run_id": row["run_id"],

@@ -31,6 +31,10 @@ from tradingagents.dashboard.scanner_confluence import (
     ConfluenceRequest,
     ScannerConfluenceReviewer,
 )
+from tradingagents.dashboard.scanner_execution import (
+    ScannerExecutionRequest,
+    ScannerPaperExecutor,
+)
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.dashboard.validation import validate_backtest_result
 
@@ -45,6 +49,7 @@ store = RunStore(ledger=ledger, storage=storage)
 agent_replay_service = AgentReplayService(storage=storage)
 scanner = CrossMarketScanner(storage=storage)
 scanner_confluence = ScannerConfluenceReviewer(storage=storage)
+scanner_executor = ScannerPaperExecutor(storage=storage, ledger=ledger)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -272,6 +277,11 @@ def review_scanner_confluence(request: ConfluenceRequest):
 @app.get("/api/scanner/confluence/reviews")
 def scanner_confluence_reviews(limit: int = Query(default=100, ge=1, le=500)):
     return {"reviews": scanner_confluence.reviews(limit=limit)}
+
+
+@app.post("/api/scanner/confluence/execute")
+def execute_scanner_confluence(request: ScannerExecutionRequest):
+    return scanner_executor.execute(request)
 
 
 @app.get("/api/orders")
