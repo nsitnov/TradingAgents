@@ -30,7 +30,7 @@ DEFAULT_AUTOMATION_CONFIG = {
         "analysts": ["market", "social", "news", "fundamentals"],
         "research_depth": 1,
         "llm_provider": "openai",
-        "shallow_thinker": "gpt-5.4-mini",
+        "shallow_thinker": "gpt-oss:20b",
         "deep_thinker": "gpt-5.4",
         "quick_llm_provider": "ollama",
         "quick_backend_url": "http://localhost:11434/v1",

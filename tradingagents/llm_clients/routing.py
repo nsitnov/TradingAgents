@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LLM_ROUTING: Dict[str, Any] = {
     "quick_llm_provider": "ollama",
-    "quick_think_llm": "qwen3:latest",
+    "quick_think_llm": "gpt-oss:20b",
     "quick_backend_url": "http://localhost:11434/v1",
     "quick_fallback_llm_provider": "openai",
     "quick_fallback_think_llm": "gpt-5.4-mini",

@@ -55,7 +55,7 @@ DEFAULT_AUTOPILOT_CONFIG = {
     "llm_routing": {
         "mode": "balanced",
         "quick_llm_provider": "ollama",
-        "quick_think_llm": "qwen3:latest",
+        "quick_think_llm": "gpt-oss:20b",
         "quick_backend_url": "http://localhost:11434/v1",
         "deep_llm_provider": "openai",
         "deep_think_llm": "gpt-5.4",

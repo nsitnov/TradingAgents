@@ -14,7 +14,7 @@ DEFAULT_CONFIG = {
     # LLM settings
     "llm_provider": "openai",
     "deep_think_llm": "gpt-5.4",
-    "quick_think_llm": "gpt-5.4-mini",
+    "quick_think_llm": "gpt-oss:20b",
     # Optional multi-LLM routing. Quick roles can use a local Ollama model,
     # while critical decisions stay on OpenAI.
     "quick_llm_provider": "ollama",

@@ -69,7 +69,7 @@ class RunRequest(BaseModel):
     )
     research_depth: int = Field(default=1, ge=1, le=5)
     llm_provider: str = "openai"
-    shallow_thinker: str = "gpt-5.4-mini"
+    shallow_thinker: str = "gpt-oss:20b"
     deep_thinker: str = "gpt-5.4"
     backend_url: Optional[str] = None
     quick_llm_provider: str = "ollama"

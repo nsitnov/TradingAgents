@@ -108,7 +108,7 @@ def test_graph_creates_mixed_provider_clients(monkeypatch):
         "memory_log_path": "/tmp/memory.md",
         "memory_log_max_entries": None,
         "llm_provider": "openai",
-        "quick_think_llm": "qwen3:latest",
+        "quick_think_llm": "gpt-oss:20b",
         "deep_think_llm": "gpt-5.4",
         "quick_llm_provider": "ollama",
         "quick_backend_url": "http://localhost:11434/v1",
@@ -133,7 +133,7 @@ def test_graph_creates_mixed_provider_clients(monkeypatch):
 
     TradingAgentsGraph(selected_analysts=["market"], config=config)
 
-    assert ("ollama", "qwen3:latest", "http://localhost:11434/v1") in created
+    assert ("ollama", "gpt-oss:20b", "http://localhost:11434/v1") in created
     assert ("openai", "gpt-5.4-mini", None) in created
     assert ("openai", "gpt-5.4", None) in created
 
