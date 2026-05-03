@@ -238,6 +238,7 @@
         const [autopilotLoading, setAutopilotLoading] = useState(false);
         const [autopilotError, setAutopilotError] = useState("");
         const [openaiCosts, setOpenaiCosts] = useState(null);
+        const [costDays, setCostDays] = useState(1);
         const [readinessMetrics, setReadinessMetrics] = useState(null);
         const [stabilityGate, setStabilityGate] = useState(null);
         const [postmortems, setPostmortems] = useState({ summary: {}, postmortems: [] });
@@ -250,8 +251,9 @@
         const [llmEvalForm, setLlmEvalForm] = useState({
           models: "qwen3.6:27b,qwen3.6:35b",
           baseline_model: "gpt-oss:20b",
-          max_runtime_gib: 35,
+          max_runtime_gib: 50,
           memory_reserve_gib: 32,
+          context_window: 8192,
           auto_promote: true,
           allow_pull: false,
           backend_url: "http://localhost:11434"
@@ -322,6 +324,7 @@
         const [scannerCalibration, setScannerCalibration] = useState(null);
         const [scannerLoading, setScannerLoading] = useState(false);
         const [scannerError, setScannerError] = useState("");
+        const [refreshStatus, setRefreshStatus] = useState({ state: "idle", message: "" });
         const [error, setError] = useState("");
         const sourceRef = useRef(null);
 
@@ -343,26 +346,48 @@
 
         const active = run && !["completed", "error", "cancelled"].includes(run.status);
 
+        async function apiGet(path) {
+          const separator = path.includes("?") ? "&" : "?";
+          const res = await fetch(`${path}${separator}_=${Date.now()}`, {
+            cache: "no-store",
+            credentials: "same-origin"
+          });
+          if (!res.ok) throw new Error(`${path} returned ${res.status}`);
+          return res;
+        }
+
+        async function refreshWithStatus(label, refreshFn) {
+          setRefreshStatus({ state: "loading", message: `Refreshing ${label}...` });
+          try {
+            await refreshFn();
+            const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            setRefreshStatus({ state: "ok", message: `${label} refreshed ${at}` });
+          } catch (exc) {
+            console.error(exc);
+            setRefreshStatus({ state: "error", message: `${label} refresh failed` });
+          }
+        }
+
         async function refreshRuns() {
-          const res = await fetch("/api/runs");
+          const res = await apiGet("/api/runs");
           const data = await res.json();
           setRuns(data.runs || []);
         }
 
         async function refreshPortfolio() {
-          const res = await fetch("/api/portfolio");
+          const res = await apiGet("/api/portfolio");
           setPortfolio(await res.json());
         }
 
         async function refreshPortfolioHistory() {
-          const res = await fetch("/api/portfolio/history");
+          const res = await apiGet("/api/portfolio/history");
           setPortfolioHistory(await res.json());
         }
 
         async function refreshAutomation() {
           const [configRes, historyRes] = await Promise.all([
-            fetch("/api/automation/config"),
-            fetch("/api/automation/history")
+            apiGet("/api/automation/config"),
+            apiGet("/api/automation/history")
           ]);
           if (configRes.ok) setAutomationConfig(await configRes.json());
           if (historyRes.ok) setAutomationHistory((await historyRes.json()).jobs || []);
@@ -370,9 +395,9 @@
 
         async function refreshAutopilot() {
           const [configRes, statusRes, jobsRes] = await Promise.all([
-            fetch("/api/autopilot/config"),
-            fetch("/api/autopilot/status"),
-            fetch("/api/autopilot/jobs")
+            apiGet("/api/autopilot/config"),
+            apiGet("/api/autopilot/status"),
+            apiGet("/api/autopilot/jobs")
           ]);
           if (configRes.ok) setAutopilotConfig(await configRes.json());
           if (statusRes.ok) setAutopilotStatus(await statusRes.json());
@@ -415,16 +440,16 @@
           }
         }
 
-        async function refreshCosts() {
-          const res = await fetch("/api/costs/openai");
+        async function refreshCosts(days = costDays) {
+          const res = await apiGet(`/api/costs/openai?days=${encodeURIComponent(days)}`);
           if (res.ok) setOpenaiCosts(await res.json());
         }
 
         async function refreshReadiness() {
           const [metricsRes, gateRes, postmortemsRes] = await Promise.all([
-            fetch("/api/readiness/metrics"),
-            fetch("/api/readiness/stability-gate"),
-            fetch("/api/readiness/postmortems")
+            apiGet("/api/readiness/metrics"),
+            apiGet("/api/readiness/stability-gate"),
+            apiGet("/api/readiness/postmortems")
           ]);
           if (metricsRes.ok) setReadinessMetrics(await metricsRes.json());
           if (gateRes.ok) setStabilityGate(await gateRes.json());
@@ -433,8 +458,8 @@
 
         async function refreshProgress() {
           const [weeklyRes, historyRes] = await Promise.all([
-            fetch("/api/progress/weekly"),
-            fetch("/api/progress/history")
+            apiGet("/api/progress/weekly"),
+            apiGet("/api/progress/history")
           ]);
           if (weeklyRes.ok) setProgressWeekly(await weeklyRes.json());
           if (historyRes.ok) setProgressHistory((await historyRes.json()).weeks || []);
@@ -442,8 +467,8 @@
 
         async function refreshLlmEval() {
           const [scorecardRes, runsRes] = await Promise.all([
-            fetch("/api/llm-eval/scorecard"),
-            fetch("/api/llm-eval/runs")
+            apiGet("/api/llm-eval/scorecard"),
+            apiGet("/api/llm-eval/runs")
           ]);
           if (scorecardRes.ok) setLlmEvalScorecard(await scorecardRes.json());
           if (runsRes.ok) setLlmEvalRuns((await runsRes.json()).runs || []);
@@ -456,8 +481,9 @@
           const payload = {
             models: llmEvalForm.models.split(",").map((item) => item.trim()).filter(Boolean),
             baseline_model: llmEvalForm.baseline_model,
-            max_runtime_gib: Number(llmEvalForm.max_runtime_gib || 35),
+            max_runtime_gib: Number(llmEvalForm.max_runtime_gib || 50),
             memory_reserve_gib: Number(llmEvalForm.memory_reserve_gib || 32),
+            context_window: Number(llmEvalForm.context_window || 8192),
             auto_promote: !!llmEvalForm.auto_promote,
             allow_pull: !!llmEvalForm.allow_pull,
             backend_url: llmEvalForm.backend_url
@@ -481,7 +507,7 @@
         }
 
         async function refreshBacktests() {
-          const res = await fetch("/api/backtests");
+          const res = await apiGet("/api/backtests");
           if (res.ok) setBacktests((await res.json()).backtests || []);
         }
 
@@ -533,12 +559,12 @@
         }
 
         async function openBacktest(backtestId) {
-          const res = await fetch(`/api/backtests/${backtestId}`);
+          const res = await apiGet(`/api/backtests/${backtestId}`);
           if (res.ok) setSelectedBacktest(await res.json());
         }
 
         async function refreshAgentReplays() {
-          const res = await fetch("/api/agent-replays");
+          const res = await apiGet("/api/agent-replays");
           if (res.ok) setAgentReplayJobs((await res.json()).jobs || []);
         }
 
@@ -585,7 +611,7 @@
         }
 
         async function openAgentReplay(jobId) {
-          const res = await fetch(`/api/agent-replays/${jobId}`);
+          const res = await apiGet(`/api/agent-replays/${jobId}`);
           if (res.ok) setSelectedAgentReplay(await res.json());
         }
 
@@ -597,11 +623,11 @@
 
         async function refreshScanner() {
           const [signalsRes, eventsRes, dislocationsRes, confluenceRes, calibrationRes] = await Promise.all([
-            fetch("/api/scanner/signals"),
-            fetch("/api/scanner/events"),
-            fetch("/api/scanner/dislocations"),
-            fetch("/api/scanner/confluence/reviews"),
-            fetch("/api/scanner/calibration")
+            apiGet("/api/scanner/signals"),
+            apiGet("/api/scanner/events"),
+            apiGet("/api/scanner/dislocations"),
+            apiGet("/api/scanner/confluence/reviews"),
+            apiGet("/api/scanner/calibration")
           ]);
           if (signalsRes.ok) setScannerSignals((await signalsRes.json()).signals || []);
           if (eventsRes.ok) setScannerEvents((await eventsRes.json()).events || []);
@@ -735,7 +761,7 @@
             "stats", "decision", "position_update", "pnl_update", "run_completed", "run_error"
           ].forEach((type) => {
             source.addEventListener(type, async (event) => {
-              const res = await fetch(`/api/runs/${runId}`);
+              const res = await apiGet(`/api/runs/${runId}`);
               if (res.ok) setRun(await res.json());
               if (["position_update", "pnl_update", "run_completed"].includes(type)) {
                 refreshPortfolio();
@@ -774,14 +800,15 @@
                   ["history", "Analysis History"],
                   ["costs", "OpenAI Spend"]
                 ].map(([key, label]) => (
-                  <button key={key} className={`tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
+                  <button key={key} type="button" className={`tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
                 ))}
                 <span className={statusClass(run?.status)}>{run?.status || "idle"}</span>
+                {refreshStatus.message && <span className={refreshStatus.state === "error" ? "neg" : "muted"}>{refreshStatus.message}</span>}
               </div>
             </header>
-            {tab === "progress" && <ProgressDashboard weekly={progressWeekly} history={progressHistory} refresh={refreshProgress} />}
-            {tab === "autopilot" && <AutopilotDashboard config={autopilotConfig} status={autopilotStatus} jobs={autopilotJobs} loading={autopilotLoading} error={autopilotError} saveConfig={saveAutopilotConfig} runNow={runAutopilotNow} refresh={refreshAutopilot} scannerCalibration={scannerCalibration} readiness={stabilityGate} />}
-            {tab === "llmEval" && <LlmEvalDashboard form={llmEvalForm} setForm={setLlmEvalForm} scorecard={llmEvalScorecard} runs={llmEvalRuns} loading={llmEvalLoading} error={llmEvalError} runEval={runLlmEval} refresh={refreshLlmEval} />}
+            {tab === "progress" && <ProgressDashboard weekly={progressWeekly} history={progressHistory} refresh={() => refreshWithStatus("Progress", refreshProgress)} />}
+            {tab === "autopilot" && <AutopilotDashboard config={autopilotConfig} status={autopilotStatus} jobs={autopilotJobs} loading={autopilotLoading} error={autopilotError} saveConfig={saveAutopilotConfig} runNow={runAutopilotNow} refresh={() => refreshWithStatus("Autopilot", refreshAutopilot)} scannerCalibration={scannerCalibration} readiness={stabilityGate} />}
+            {tab === "llmEval" && <LlmEvalDashboard form={llmEvalForm} setForm={setLlmEvalForm} scorecard={llmEvalScorecard} runs={llmEvalRuns} loading={llmEvalLoading} error={llmEvalError} runEval={runLlmEval} refresh={() => refreshWithStatus("LLM scorecard", refreshLlmEval)} />}
             {tab === "live" && (
               <main>
                 <aside className="sidebar">
@@ -801,12 +828,12 @@
             )}
             {tab === "portfolio" && <PortfolioDashboard portfolio={portfolio} data={portfolioHistory} />}
             {tab === "backtests" && <BacktestsDashboard form={backtestForm} setForm={setBacktestForm} backtests={backtests} selected={selectedBacktest} loading={backtestLoading} error={backtestError} runBacktest={runBacktest} openBacktest={openBacktest} />}
-            {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={refreshAgentReplays} />}
-            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} calibration={scannerCalibration} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} executeConfluence={executeScannerConfluence} refresh={refreshScanner} />}
-            {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={refreshAutomation} />}
-            {tab === "readiness" && <ReadinessDashboard metrics={readinessMetrics} gate={stabilityGate} postmortems={postmortems} refresh={refreshReadiness} />}
+            {tab === "agentReplay" && <AgentReplayDashboard form={agentReplayForm} setForm={setAgentReplayForm} jobs={agentReplayJobs} selected={selectedAgentReplay} loading={agentReplayLoading} error={agentReplayError} startReplay={startAgentReplay} openReplay={openAgentReplay} cancelReplay={cancelAgentReplay} refresh={() => refreshWithStatus("Replay jobs", refreshAgentReplays)} />}
+            {tab === "scanner" && <ScannerDashboard form={scannerForm} setForm={setScannerForm} signals={scannerSignals} events={scannerEvents} dislocations={scannerDislocations} confluenceReviews={scannerConfluenceReviews} calibration={scannerCalibration} loading={scannerLoading} error={scannerError} ingestEvent={ingestScannerEvent} detectDislocations={detectScannerDislocations} reviewConfluence={reviewScannerConfluence} executeConfluence={executeScannerConfluence} refresh={() => refreshWithStatus("Scanner", refreshScanner)} />}
+            {tab === "automation" && <AutomationDashboard config={automationConfig} history={automationHistory} refresh={() => refreshWithStatus("Automation", refreshAutomation)} />}
+            {tab === "readiness" && <ReadinessDashboard metrics={readinessMetrics} gate={stabilityGate} postmortems={postmortems} refresh={() => refreshWithStatus("Readiness", refreshReadiness)} />}
             {tab === "history" && <AnalysisHistory runs={runs} />}
-            {tab === "costs" && <CostsDashboard data={openaiCosts} refresh={refreshCosts} />}
+            {tab === "costs" && <CostsDashboard data={openaiCosts} days={costDays} setDays={(days) => { setCostDays(days); refreshWithStatus("OpenAI spend", () => refreshCosts(days)); }} refresh={() => refreshWithStatus("OpenAI spend", () => refreshCosts(costDays))} />}
           </>
         );
       }
@@ -966,7 +993,7 @@
                     <h2>Weekly Progress Scorecard</h2>
                     <div className="muted">{weekly?.period?.label || "No weekly progress loaded yet."}</div>
                   </div>
-                  <button onClick={refresh}>Refresh</button>
+                  <button type="button" onClick={refresh}>Refresh</button>
                 </div>
                 <section className="grid-3">
                   <div className="metric"><span>Overall</span><strong className={statusTone(weekly?.overall_status)}>{weekly?.overall_status || "--"}</strong></div>
@@ -1051,9 +1078,10 @@
                   <div className="field"><label>Candidate models</label><input value={form.models} onChange={(e) => setForm({ ...form, models: e.target.value })} /></div>
                   <div className="field"><label>Baseline</label><input value={form.baseline_model} onChange={(e) => setForm({ ...form, baseline_model: e.target.value })} /></div>
                   <div className="grid-2">
-                    <div className="field"><label>Max GiB</label><input type="number" step="1" value={form.max_runtime_gib} onChange={(e) => setForm({ ...form, max_runtime_gib: Number(e.target.value || 35) })} /></div>
+                    <div className="field"><label>Max GiB</label><input type="number" step="1" value={form.max_runtime_gib} onChange={(e) => setForm({ ...form, max_runtime_gib: Number(e.target.value || 50) })} /></div>
                     <div className="field"><label>Reserve GiB</label><input type="number" step="1" value={form.memory_reserve_gib} onChange={(e) => setForm({ ...form, memory_reserve_gib: Number(e.target.value || 32) })} /></div>
                   </div>
+                  <div className="field"><label>Context window</label><input type="number" min="2048" max="32768" step="1024" value={form.context_window} onChange={(e) => setForm({ ...form, context_window: Number(e.target.value || 8192) })} /></div>
                   <div className="field"><label>Ollama URL</label><input value={form.backend_url} onChange={(e) => setForm({ ...form, backend_url: e.target.value })} /></div>
                   <div className="checks">
                     <label><input type="checkbox" checked={!!form.auto_promote} onChange={(e) => setForm({ ...form, auto_promote: e.target.checked })} />Auto promote</label>
@@ -1165,15 +1193,15 @@
                   <label><input type="checkbox" checked={!!nextConfig.daily_analysis_enabled} onChange={(e) => update({ daily_analysis_enabled: e.target.checked })} />Daily agents</label>
                 </div>
                 <div className="actions">
-                  <button className="primary" disabled={loading || !nextConfig.enabled} onClick={runNow}>{loading ? "Running" : "Run Now"}</button>
-                  <button onClick={refresh}>Refresh</button>
+                  <button className="primary" type="button" disabled={loading || !nextConfig.enabled} onClick={runNow}>{loading ? "Running" : "Run Now"}</button>
+                  <button type="button" onClick={refresh}>Refresh</button>
                 </div>
                 {error && <p className="neg">{error}</p>}
               </section>
               <section className="panel">
                 <h2>Scanner Sources</h2>
                 <div className="field"><label>RSS URLs</label><textarea rows="7" value={draftSources} onChange={(e) => setDraftSources(e.target.value)} /></div>
-                <button onClick={saveSources}>Save Sources</button>
+                <button type="button" onClick={saveSources}>Save Sources</button>
               </section>
               <section className="panel">
                 <h2>Thresholds</h2>
@@ -1397,7 +1425,7 @@
                 <div className="agent-list">
                   {backtests.length === 0 && <p className="muted">No backtests yet.</p>}
                   {backtests.map((item) => (
-                    <button key={item.backtest_id} onClick={() => openBacktest(item.backtest_id)}>
+                    <button key={item.backtest_id} type="button" onClick={() => openBacktest(item.backtest_id)}>
                       {(item.summary?.tickers || item.config?.tickers || []).join(", ") || "Backtest"} · {((item.summary?.total_return_pct || 0) * 100).toFixed(2)}%
                     </button>
                   ))}
@@ -1504,7 +1532,7 @@
                 <div className="agent-list">
                   {jobs.length === 0 && <p className="muted">No replay jobs yet.</p>}
                   {jobs.map((job) => (
-                    <button key={job.job_id} onClick={() => openReplay(job.job_id)}>
+                    <button key={job.job_id} type="button" onClick={() => openReplay(job.job_id)}>
                       {(job.config?.tickers || []).join(", ") || "Replay"} · {job.status} · {((job.progress?.pct_complete || 0) * 100).toFixed(0)}%
                     </button>
                   ))}
@@ -1526,8 +1554,8 @@
                 <div className="toolbar">
                   <h2>Selected Replay</h2>
                   <div className="actions">
-                    {selected?.job_id && <button onClick={() => openReplay(selected.job_id)}>Refresh</button>}
-                    {active && <button className="danger" onClick={() => cancelReplay(selected.job_id)}>Cancel</button>}
+                    {selected?.job_id && <button type="button" onClick={() => openReplay(selected.job_id)}>Refresh</button>}
+                    {active && <button className="danger" type="button" onClick={() => cancelReplay(selected.job_id)}>Cancel</button>}
                   </div>
                 </div>
                 {!selected && <p className="muted">Select or start an agent replay job.</p>}
@@ -1737,7 +1765,7 @@
               <section className="panel">
                 <div className="toolbar">
                   <h2>Daily Automation</h2>
-                  <div className="actions"><button onClick={save}>Save</button><button className="primary" onClick={runNow}>Run Now</button></div>
+                  <div className="actions"><button type="button" onClick={save}>Save</button><button className="primary" type="button" onClick={runNow}>Run Now</button><button type="button" onClick={refresh}>Refresh</button></div>
                 </div>
                 <div className="grid-3">
                   <div className="metric"><span>Schedule</span><strong>Mon-Fri 09:00</strong></div>
@@ -1771,7 +1799,7 @@
               <section className="panel">
                 <div className="toolbar">
                   <h2>Production Readiness</h2>
-                  <button onClick={refresh}>Refresh</button>
+                  <button type="button" onClick={refresh}>Refresh</button>
                 </div>
                 <section className="grid-3">
                   <div className="metric"><span>Status</span><strong className={gate?.status === "ready_for_review" ? "pos" : "neg"}>{gate?.status || "unknown"}</strong></div>
@@ -1853,20 +1881,30 @@
         );
       }
 
-      function CostsDashboard({ data, refresh }) {
+      function CostsDashboard({ data, days, setDays, refresh }) {
         const costs = data?.costs || [];
+        const periodLabel = Number(data?.period_days || days) === 1 ? "Today" : `${data?.period_days || days} days`;
+        const baseline = Number(data?.baseline_applied_usd || 0);
         return (
           <main className="wide-main">
             <section className="content">
               <section className="grid-3">
-                <div className="metric"><span>OpenAI Cost Source</span><strong>{data?.configured ? "Costs API" : "Not configured"}</strong></div>
-                <div className="metric"><span>Total Loaded</span><strong>{money(data?.total)}</strong></div>
+                <div className="metric"><span>OpenAI Org Cost Source</span><strong>{data?.configured ? "Costs API" : "Not configured"}</strong></div>
+                <div className="metric"><span>{periodLabel} Effective Spend</span><strong>{money(data?.total)}</strong></div>
                 <div className="metric"><span>Rows</span><strong>{costs.length}</strong></div>
               </section>
+              {baseline > 0 && <section className="panel"><p className="muted">Baseline reset is active. Raw OpenAI spend is {money(data?.raw_total)}, baseline is {money(baseline)}, and dashboard/alerts count only {money(data?.total)} after the reset.</p></section>}
               {data?.error && <section className="panel"><p className="neg">{data.error}</p></section>}
               {!data?.configured && <section className="panel"><p className="muted">Set OPENAI_ADMIN_KEY in the dashboard env file to load official invoice-aligned costs.</p></section>}
               <section className="panel">
-                <div className="toolbar"><h2>OpenAI Spend</h2><button onClick={refresh}>Refresh</button></div>
+                <div className="toolbar">
+                  <h2>OpenAI Organization Spend</h2>
+                  <div className="actions">
+                    <button type="button" className={days === 1 ? "primary" : ""} onClick={() => setDays(1)}>Today</button>
+                    <button type="button" className={days === 30 ? "primary" : ""} onClick={() => setDays(30)}>30D</button>
+                    <button type="button" onClick={refresh}>Refresh</button>
+                  </div>
+                </div>
                 <table>
                   <thead><tr><th>Start</th><th>End</th><th>Amount</th><th>Currency</th><th>Line Item</th><th>Project</th></tr></thead>
                   <tbody>

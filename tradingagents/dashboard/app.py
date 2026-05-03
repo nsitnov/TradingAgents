@@ -18,7 +18,12 @@ from tradingagents.dashboard.automation import (
 )
 from tradingagents.dashboard.backtest import BacktestEngine, BacktestRequest
 from tradingagents.dashboard.brokers import BrokerError, broker_config_from_env, broker_from_env
-from tradingagents.dashboard.costs import refresh_openai_costs
+from tradingagents.dashboard.costs import (
+    apply_openai_cost_baseline,
+    cached_openai_costs,
+    cost_window_start,
+    refresh_openai_costs,
+)
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.llm_eval import LLMEvalRequest, LLMEvalService
 from tradingagents.dashboard.monitor import RunRequest, RunStore, event_stream
@@ -496,14 +501,21 @@ def automation_history():
 
 
 @app.get("/api/costs/openai")
-def openai_costs(days: int = Query(default=30, ge=1, le=90)):
+def openai_costs(days: int = Query(default=1, ge=1, le=90)):
     try:
         return refresh_openai_costs(storage, days=days)
     except Exception as exc:
-        cached = storage.openai_costs()
+        cached = cached_openai_costs(storage, days=days)
+        raw_total = sum(item["amount"] for item in cached)
+        totals = apply_openai_cost_baseline(raw_total, days=days)
         return {
             "configured": bool(os.getenv("OPENAI_ADMIN_KEY")),
             "error": str(exc),
             "costs": cached,
-            "total": sum(item["amount"] for item in cached),
+            "total": totals["total"],
+            "raw_total": totals["raw_total"],
+            "baseline": totals["baseline"],
+            "baseline_applied_usd": totals["baseline_applied_usd"],
+            "period_days": days,
+            "period_start": cost_window_start(days),
         }

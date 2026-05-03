@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
+from tradingagents.dashboard.cost_alerts import check_daily_openai_cost_alert
 from tradingagents.dashboard.costs import today_openai_spend
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.monitor import RunRequest, RunStore, TERMINAL_STATUSES
@@ -159,6 +160,19 @@ def run_daily_once(
                     "error": message,
                 }
             if spend >= float(config["daily_openai_budget_usd"]):
+                try:
+                    check_daily_openai_cost_alert(
+                        storage=storage,
+                        threshold_usd=float(config["daily_openai_budget_usd"]),
+                    )
+                except Exception as exc:
+                    storage.insert_audit_event(
+                        "cost_alert_error",
+                        "openai_cost_alert",
+                        today.isoformat(),
+                        None,
+                        {"error": str(exc), "spend_usd": spend},
+                    )
                 skipped.append(ticker)
                 continue
 

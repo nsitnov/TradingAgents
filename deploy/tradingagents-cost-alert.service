@@ -1,0 +1,14 @@
+[Unit]
+Description=Check TradingAgents daily OpenAI spend alert
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/nsitnov/tradingagents
+Environment=TRADINGAGENTS_DASHBOARD_ENV=/home/nsitnov/.config/tradingagents-dashboard.env
+EnvironmentFile=-/home/nsitnov/.config/tradingagents-dashboard.env
+ExecStart=/home/nsitnov/tradingagents/.venv/bin/python -m tradingagents.dashboard.cost_alerts
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradingagents-cost-alert

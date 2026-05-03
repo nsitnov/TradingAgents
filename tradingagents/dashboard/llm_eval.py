@@ -30,9 +30,10 @@ from tradingagents.dashboard.storage import DashboardStorage, now_iso
 TERMINAL_STATUSES = {"completed", "error", "cancelled", "skipped", "disabled"}
 DEFAULT_BASELINE_MODEL = "gpt-oss:20b"
 DEFAULT_CANDIDATE_MODELS = ["qwen3.6:27b", "qwen3.6:35b"]
-DEFAULT_MAX_RUNTIME_GIB = 35.0
+DEFAULT_MAX_RUNTIME_GIB = 50.0
 DEFAULT_MEMORY_RESERVE_GIB = 32.0
 DEFAULT_BACKEND_URL = "http://localhost:11434"
+DEFAULT_CONTEXT_WINDOW = 8192
 KNOWN_MODEL_DISK_GIB = {
     "gpt-oss:20b": 13.0,
     "qwen3.6:27b": 17.0,
@@ -84,6 +85,7 @@ class LLMEvalRequest(BaseModel):
     baseline_model: str = DEFAULT_BASELINE_MODEL
     max_runtime_gib: float = DEFAULT_MAX_RUNTIME_GIB
     memory_reserve_gib: float = DEFAULT_MEMORY_RESERVE_GIB
+    context_window: int = Field(default=DEFAULT_CONTEXT_WINDOW, ge=2048, le=32768)
     auto_promote: bool = True
     allow_pull: bool = False
     backend_url: str = DEFAULT_BACKEND_URL
@@ -130,8 +132,22 @@ class OllamaRuntime:
         except OSError:
             return 0.0
 
-    def generate(self, model: str, prompt: str, *, timeout: float = 120.0) -> str:
-        payload = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        timeout: float = 120.0,
+        context_window: int = DEFAULT_CONTEXT_WINDOW,
+    ) -> str:
+        payload = json.dumps(
+            {
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"num_ctx": context_window},
+            }
+        ).encode()
         request = urllib.request.Request(
             f"{self.backend_url}/api/generate",
             data=payload,
@@ -205,7 +221,12 @@ class LLMEvalService:
         finally:
             try:
                 self._stop_owned_running_models(owned_models, protected_models)
-                self.runtime.generate(restore_model, "Reply with exactly: ready", timeout=60.0)
+                self.runtime.generate(
+                    restore_model,
+                    "Reply with exactly: ready",
+                    timeout=60.0,
+                    context_window=request.context_window,
+                )
                 result["baseline_restored"] = True
                 result["restored_model"] = restore_model
             except Exception as exc:
@@ -258,7 +279,11 @@ class LLMEvalService:
         for case in DEFAULT_EVAL_PROMPTS:
             started = time.perf_counter()
             try:
-                response = self.runtime.generate(model, case["prompt"])
+                response = self.runtime.generate(
+                    model,
+                    case["prompt"],
+                    context_window=request.context_window,
+                )
                 latency_ms = (time.perf_counter() - started) * 1000.0
                 prompt_results.append(_score_prompt_response(case, response, latency_ms))
             except Exception as exc:
@@ -565,6 +590,7 @@ def main() -> int:
     parser.add_argument("--baseline", default=DEFAULT_BASELINE_MODEL)
     parser.add_argument("--max-runtime-gib", type=float, default=DEFAULT_MAX_RUNTIME_GIB)
     parser.add_argument("--memory-reserve-gib", type=float, default=DEFAULT_MEMORY_RESERVE_GIB)
+    parser.add_argument("--context-window", type=int, default=DEFAULT_CONTEXT_WINDOW)
     parser.add_argument("--backend-url", default=DEFAULT_BACKEND_URL)
     parser.add_argument("--pull", action="store_true")
     parser.add_argument("--no-auto-promote", action="store_true")
@@ -579,6 +605,7 @@ def main() -> int:
         baseline_model=args.baseline,
         max_runtime_gib=args.max_runtime_gib,
         memory_reserve_gib=args.memory_reserve_gib,
+        context_window=args.context_window,
         auto_promote=not args.no_auto_promote,
         allow_pull=args.pull,
         backend_url=args.backend_url,

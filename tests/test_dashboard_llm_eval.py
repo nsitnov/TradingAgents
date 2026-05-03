@@ -41,7 +41,7 @@ class FakeRuntime:
     def available_memory_gib(self):
         return 80.0
 
-    def generate(self, model, prompt, *, timeout=120.0):
+    def generate(self, model, prompt, *, timeout=120.0, context_window=8192):
         self.generated.append(model)
         self.running[model] = self.sizes.get(model, 17.0)
         if "ready" in prompt.lower():

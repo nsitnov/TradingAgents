@@ -1,0 +1,10 @@
+[Unit]
+Description=Check TradingAgents daily OpenAI spend every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+Unit=tradingagents-cost-alert.service
+
+[Install]
+WantedBy=timers.target
