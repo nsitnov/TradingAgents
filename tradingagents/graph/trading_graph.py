@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.llm_clients.routing import FallbackLLM, routing_config
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -77,27 +78,25 @@ class TradingAgentsGraph:
         os.makedirs(self.config["results_dir"], exist_ok=True)
 
         # Initialize LLMs with provider-specific thinking configuration
-        llm_kwargs = self._get_provider_kwargs()
+        self.llm_routing = routing_config(self.config)
+        self.llm_fallback_events: List[Dict[str, Any]] = []
 
         # Add callbacks to kwargs if provided (passed to LLM constructor)
-        if self.callbacks:
-            llm_kwargs["callbacks"] = self.callbacks
+        quick_client = self._create_role_client("quick")
+        quick_fallback_client = self._create_quick_fallback_client()
+        deep_client = self._create_role_client("deep")
+        critical_client = self._create_role_client("critical")
 
-        deep_client = create_llm_client(
-            provider=self.config["llm_provider"],
-            model=self.config["deep_think_llm"],
-            base_url=self.config.get("backend_url"),
-            **llm_kwargs,
+        quick_llm = quick_client.get_llm()
+        quick_fallback_llm = quick_fallback_client.get_llm() if quick_fallback_client else None
+        self.quick_thinking_llm = FallbackLLM(
+            quick_llm,
+            quick_fallback_llm,
+            role="quick",
+            on_fallback=self.llm_fallback_events.append,
         )
-        quick_client = create_llm_client(
-            provider=self.config["llm_provider"],
-            model=self.config["quick_think_llm"],
-            base_url=self.config.get("backend_url"),
-            **llm_kwargs,
-        )
-
         self.deep_thinking_llm = deep_client.get_llm()
-        self.quick_thinking_llm = quick_client.get_llm()
+        self.critical_thinking_llm = critical_client.get_llm()
         
         self.memory_log = TradingMemoryLog(self.config)
 
@@ -112,6 +111,7 @@ class TradingAgentsGraph:
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,
+            self.critical_thinking_llm,
             self.tool_nodes,
             self.conditional_logic,
         )
@@ -130,10 +130,37 @@ class TradingAgentsGraph:
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
 
-    def _get_provider_kwargs(self) -> Dict[str, Any]:
+    def _create_role_client(self, role: str):
+        provider = self.llm_routing[f"{role}_llm_provider"]
+        kwargs = self._get_provider_kwargs(provider)
+        if self.callbacks:
+            kwargs["callbacks"] = self.callbacks
+        return create_llm_client(
+            provider=provider,
+            model=self.llm_routing[f"{role}_think_llm"],
+            base_url=self.llm_routing.get(f"{role}_backend_url"),
+            **kwargs,
+        )
+
+    def _create_quick_fallback_client(self):
+        provider = self.llm_routing.get("quick_fallback_llm_provider")
+        model = self.llm_routing.get("quick_fallback_think_llm")
+        if not provider or not model:
+            return None
+        kwargs = self._get_provider_kwargs(provider)
+        if self.callbacks:
+            kwargs["callbacks"] = self.callbacks
+        return create_llm_client(
+            provider=provider,
+            model=model,
+            base_url=self.llm_routing.get("quick_fallback_backend_url"),
+            **kwargs,
+        )
+
+    def _get_provider_kwargs(self, provider: Optional[str] = None) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
         kwargs = {}
-        provider = self.config.get("llm_provider", "").lower()
+        provider = (provider or self.config.get("llm_provider", "")).lower()
 
         if provider == "google":
             thinking_level = self.config.get("google_thinking_level")

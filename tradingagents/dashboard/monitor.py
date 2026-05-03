@@ -72,6 +72,16 @@ class RunRequest(BaseModel):
     shallow_thinker: str = "gpt-5.4-mini"
     deep_thinker: str = "gpt-5.4"
     backend_url: Optional[str] = None
+    quick_llm_provider: str = "ollama"
+    quick_backend_url: Optional[str] = "http://localhost:11434/v1"
+    quick_fallback_llm_provider: Optional[str] = "openai"
+    quick_fallback_thinker: Optional[str] = "gpt-5.4-mini"
+    quick_fallback_backend_url: Optional[str] = None
+    deep_llm_provider: str = "openai"
+    deep_backend_url: Optional[str] = None
+    critical_llm_provider: str = "openai"
+    critical_thinker: str = "gpt-5.4"
+    critical_backend_url: Optional[str] = None
     output_language: str = "English"
     openai_reasoning_effort: Optional[str] = None
     checkpoint: bool = False
@@ -353,6 +363,20 @@ class RunStore:
             config["deep_think_llm"] = request.deep_thinker
             config["backend_url"] = request.backend_url
             config["llm_provider"] = request.llm_provider.lower()
+            config["quick_llm_provider"] = request.quick_llm_provider.lower()
+            config["quick_backend_url"] = request.quick_backend_url
+            config["quick_fallback_llm_provider"] = (
+                request.quick_fallback_llm_provider.lower()
+                if request.quick_fallback_llm_provider
+                else None
+            )
+            config["quick_fallback_think_llm"] = request.quick_fallback_thinker
+            config["quick_fallback_backend_url"] = request.quick_fallback_backend_url
+            config["deep_llm_provider"] = request.deep_llm_provider.lower()
+            config["deep_backend_url"] = request.deep_backend_url
+            config["critical_llm_provider"] = request.critical_llm_provider.lower()
+            config["critical_think_llm"] = request.critical_thinker
+            config["critical_backend_url"] = request.critical_backend_url
             config["openai_reasoning_effort"] = request.openai_reasoning_effort
             config["output_language"] = request.output_language
             config["checkpoint_enabled"] = request.checkpoint
@@ -398,6 +422,12 @@ class RunStore:
 
             if not trace:
                 raise RuntimeError("TradingAgents graph produced no output")
+            run.stats = {
+                **stats_handler.get_stats(),
+                "llm_fallbacks": len(graph.llm_fallback_events),
+                "llm_fallback_events": graph.llm_fallback_events,
+                "llm_routing": graph.llm_routing,
+            }
 
             final_state = trace[-1]
             graph.curr_state = final_state

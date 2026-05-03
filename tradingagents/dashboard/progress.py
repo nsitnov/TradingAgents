@@ -63,6 +63,7 @@ class ProgressReporter:
         risk = self._risk()
         autopilot = self._autopilot(period)
         costs = self._costs(period)
+        llm = self._llm_usage(period)
 
         profitability_status = self._profitability_status(portfolio, backtests, replays)
         autopilot_status = self._autopilot_status(autopilot)
@@ -97,6 +98,7 @@ class ProgressReporter:
             "risk": risk,
             "autopilot": autopilot,
             "costs": costs,
+            "llm": llm,
             "recommendations": self._recommendations(
                 statuses=statuses,
                 portfolio=portfolio,
@@ -264,6 +266,38 @@ class ProgressReporter:
                 if self.weekly_cost_budget_usd
                 else 0.0
             ),
+        }
+
+    def _llm_usage(self, period: ProgressPeriod) -> Dict[str, Any]:
+        runs = _filter_by_time(
+            self.storage.recent_runs(limit=500),
+            period,
+            keys=("started_at", "ended_at"),
+        )
+        quick_providers: Dict[str, int] = {}
+        critical_providers: Dict[str, int] = {}
+        fallback_count = 0
+        for run in runs:
+            stats = run.get("stats", {})
+            routing = stats.get("llm_routing") or {}
+            quick = str(
+                routing.get("quick_llm_provider")
+                or run.get("request", {}).get("quick_llm_provider")
+                or run.get("request", {}).get("llm_provider", "unknown")
+            )
+            critical = str(
+                routing.get("critical_llm_provider")
+                or run.get("request", {}).get("critical_llm_provider")
+                or run.get("request", {}).get("llm_provider", "unknown")
+            )
+            quick_providers[quick] = quick_providers.get(quick, 0) + 1
+            critical_providers[critical] = critical_providers.get(critical, 0) + 1
+            fallback_count += int(stats.get("llm_fallbacks", 0) or 0)
+        return {
+            "runs": len(runs),
+            "quick_providers": quick_providers,
+            "critical_providers": critical_providers,
+            "fallback_count": fallback_count,
         }
 
     def _profitability_status(

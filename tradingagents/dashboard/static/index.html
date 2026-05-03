@@ -217,6 +217,13 @@
           llm_provider: "openai",
           shallow_thinker: "gpt-5.4-mini",
           deep_thinker: "gpt-5.4",
+          quick_llm_provider: "ollama",
+          quick_backend_url: "http://localhost:11434/v1",
+          quick_fallback_llm_provider: "openai",
+          quick_fallback_thinker: "gpt-5.4-mini",
+          deep_llm_provider: "openai",
+          critical_llm_provider: "openai",
+          critical_thinker: "gpt-5.4",
           output_language: "English"
         });
         const [run, setRun] = useState(null);
@@ -245,7 +252,17 @@
           spread_bps: 5,
           slippage_bps: 5,
           fee_bps: 0,
-          fixed_fee: 0
+          fixed_fee: 0,
+          llm_provider: "openai",
+          shallow_thinker: "gpt-5.4-mini",
+          deep_thinker: "gpt-5.4",
+          quick_llm_provider: "ollama",
+          quick_backend_url: "http://localhost:11434/v1",
+          quick_fallback_llm_provider: "openai",
+          quick_fallback_thinker: "gpt-5.4-mini",
+          deep_llm_provider: "openai",
+          critical_llm_provider: "openai",
+          critical_thinker: "gpt-5.4"
         });
         const [backtests, setBacktests] = useState([]);
         const [selectedBacktest, setSelectedBacktest] = useState(null);
@@ -261,7 +278,14 @@
           research_depth: 1,
           llm_provider: "openai",
           shallow_thinker: "gpt-5.4-mini",
-          deep_thinker: "gpt-5.4"
+          deep_thinker: "gpt-5.4",
+          quick_llm_provider: "ollama",
+          quick_backend_url: "http://localhost:11434/v1",
+          quick_fallback_llm_provider: "openai",
+          quick_fallback_thinker: "gpt-5.4-mini",
+          deep_llm_provider: "openai",
+          critical_llm_provider: "openai",
+          critical_thinker: "gpt-5.4"
         });
         const [agentReplayJobs, setAgentReplayJobs] = useState([]);
         const [selectedAgentReplay, setSelectedAgentReplay] = useState(null);
@@ -423,7 +447,17 @@
               slippage_bps: Number(backtestForm.slippage_bps || 0),
               fee_bps: Number(backtestForm.fee_bps || 0),
               fixed_fee: Number(backtestForm.fixed_fee || 0)
-            }
+            },
+            llm_provider: backtestForm.llm_provider,
+            shallow_thinker: backtestForm.shallow_thinker,
+            deep_thinker: backtestForm.deep_thinker,
+            quick_llm_provider: backtestForm.quick_llm_provider,
+            quick_backend_url: backtestForm.quick_backend_url,
+            quick_fallback_llm_provider: backtestForm.quick_fallback_llm_provider,
+            quick_fallback_thinker: backtestForm.quick_fallback_thinker,
+            deep_llm_provider: backtestForm.deep_llm_provider,
+            critical_llm_provider: backtestForm.critical_llm_provider,
+            critical_thinker: backtestForm.critical_thinker
           };
           try {
             const res = await fetch("/api/backtests", {
@@ -468,7 +502,14 @@
             research_depth: Number(agentReplayForm.research_depth || 1),
             llm_provider: agentReplayForm.llm_provider,
             shallow_thinker: agentReplayForm.shallow_thinker,
-            deep_thinker: agentReplayForm.deep_thinker
+            deep_thinker: agentReplayForm.deep_thinker,
+            quick_llm_provider: agentReplayForm.quick_llm_provider,
+            quick_backend_url: agentReplayForm.quick_backend_url,
+            quick_fallback_llm_provider: agentReplayForm.quick_fallback_llm_provider,
+            quick_fallback_thinker: agentReplayForm.quick_fallback_thinker,
+            deep_llm_provider: agentReplayForm.deep_llm_provider,
+            critical_llm_provider: agentReplayForm.critical_llm_provider,
+            critical_thinker: agentReplayForm.critical_thinker
           };
           try {
             const res = await fetch("/api/agent-replays", {
@@ -737,6 +778,14 @@
               </div>
               <div className="field"><label>Quick model</label><input value={form.shallow_thinker} onChange={(e) => setForm({ ...form, shallow_thinker: e.target.value })} /></div>
               <div className="field"><label>Deep model</label><input value={form.deep_thinker} onChange={(e) => setForm({ ...form, deep_thinker: e.target.value })} /></div>
+              <div className="grid-2">
+                <div className="field"><label>Quick provider</label><select value={form.quick_llm_provider} onChange={(e) => setForm({ ...form, quick_llm_provider: e.target.value })}>{["ollama", "openai", "google", "anthropic", "deepseek", "openrouter"].map((p) => <option key={p}>{p}</option>)}</select></div>
+                <div className="field"><label>Critical provider</label><select value={form.critical_llm_provider} onChange={(e) => setForm({ ...form, critical_llm_provider: e.target.value })}>{["openai", "google", "anthropic", "deepseek", "openrouter", "ollama"].map((p) => <option key={p}>{p}</option>)}</select></div>
+              </div>
+              <div className="grid-2">
+                <div className="field"><label>Quick backend</label><input value={form.quick_backend_url || ""} onChange={(e) => setForm({ ...form, quick_backend_url: e.target.value })} /></div>
+                <div className="field"><label>Critical model</label><input value={form.critical_thinker} onChange={(e) => setForm({ ...form, critical_thinker: e.target.value })} /></div>
+              </div>
               <div className="actions">
                 <button className="primary" type="submit" disabled={active || form.analysts.length === 0}>Start</button>
                 <button className="danger" type="button" disabled={!active} onClick={cancelRun}>Cancel</button>
@@ -770,6 +819,7 @@
             <div className="metric"><span>Decision</span><strong>{run?.decision || "--"}</strong></div>
             <div className="metric"><span>LLM / Tool calls</span><strong>{stats.llm_calls || 0} / {stats.tool_calls || 0}</strong></div>
             <div className="metric"><span>Total P&L</span><strong className={(portfolio?.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(portfolio?.total_pnl)}</strong></div>
+            <div className="metric"><span>LLM Fallbacks</span><strong>{stats.llm_fallbacks || 0}</strong></div>
           </section>
         );
       }
@@ -847,6 +897,7 @@
         const scanner = weekly?.scanner || {};
         const risk = weekly?.risk?.gate || {};
         const costs = weekly?.costs || {};
+        const llm = weekly?.llm || {};
         const alpha = weekly?.backtests?.benchmark_alpha || {};
         const statusTone = (status) => status === "improving" ? "pos" : status === "degrading" ? "neg" : "muted";
         const pct = (value) => `${((Number(value || 0)) * 100).toFixed(2)}%`;
@@ -868,6 +919,9 @@
                   <div className="metric"><span>Total Return</span><strong className={(portfolio.total_return_pct || 0) >= 0 ? "pos" : "neg"}>{pct(portfolio.total_return_pct)}</strong></div>
                   <div className="metric"><span>Total P&L</span><strong className={(portfolio.total_pnl || 0) >= 0 ? "pos" : "neg"}>{money(portfolio.total_pnl)}</strong></div>
                   <div className="metric"><span>Max Drawdown</span><strong className={(portfolio.max_drawdown || 0) >= -0.1 ? "" : "neg"}>{pct(portfolio.max_drawdown)}</strong></div>
+                  <div className="metric"><span>LLM Routing</span><strong>{Object.keys(llm.quick_providers || {}).join(", ") || "--"} / {Object.keys(llm.critical_providers || {}).join(", ") || "--"}</strong></div>
+                  <div className="metric"><span>LLM Fallbacks</span><strong>{llm.fallback_count || 0}</strong></div>
+                  <div className="metric"><span>LLM Routed Runs</span><strong>{llm.runs || 0}</strong></div>
                 </section>
               </section>
 
@@ -940,6 +994,7 @@
         }
         const latest = status?.latest_job;
         const funnel = scannerCalibration?.funnel || {};
+        const localLlm = status?.local_llm || {};
         return (
           <main>
             <aside className="sidebar">
@@ -982,6 +1037,9 @@
                 <div className="metric"><span>RSS Sources</span><strong>{status?.scanner_sources || 0}</strong></div>
                 <div className="metric"><span>Candidates</span><strong>{funnel.paper_candidates || 0}</strong></div>
                 <div className="metric"><span>Paper Executions</span><strong>{funnel.paper_executions || 0}</strong></div>
+                <div className="metric"><span>Local LLM</span><strong className={localLlm.available ? "pos" : localLlm.required ? "neg" : ""}>{localLlm.required ? (localLlm.available ? "ready" : "missing") : "off"}</strong></div>
+                <div className="metric"><span>Quick Model</span><strong>{localLlm.model || status?.llm_routing?.quick_think_llm || "--"}</strong></div>
+                <div className="metric"><span>Critical Model</span><strong>{status?.llm_routing?.critical_think_llm || "--"}</strong></div>
               </section>
               <section className="panel">
                 <h2>Latest Autopilot Run</h2>

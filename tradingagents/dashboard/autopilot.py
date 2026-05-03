@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import urllib.request
 import uuid
 from datetime import date
 from pathlib import Path
@@ -51,6 +52,16 @@ DEFAULT_AUTOPILOT_CONFIG = {
     "daily_analysis_enabled": False,
     "daily_analysis_source": "autopilot_daily",
     "skip_paper_execution_when_readiness_blocked": False,
+    "llm_routing": {
+        "mode": "balanced",
+        "quick_llm_provider": "ollama",
+        "quick_think_llm": "qwen3:latest",
+        "quick_backend_url": "http://localhost:11434/v1",
+        "deep_llm_provider": "openai",
+        "deep_think_llm": "gpt-5.4",
+        "critical_llm_provider": "openai",
+        "critical_think_llm": "gpt-5.4",
+    },
 }
 
 
@@ -87,7 +98,36 @@ def normalize_autopilot_config(config: Dict[str, Any]) -> Dict[str, Any]:
     merged["max_paper_orders_per_cycle"] = int(
         merged.get("max_paper_orders_per_cycle", 10)
     )
+    routing = dict(DEFAULT_AUTOPILOT_CONFIG["llm_routing"])
+    routing.update(merged.get("llm_routing") or {})
+    merged["llm_routing"] = routing
     return merged
+
+
+def local_llm_status(routing: Dict[str, Any]) -> Dict[str, Any]:
+    provider = str(routing.get("quick_llm_provider", "")).lower()
+    model = str(routing.get("quick_think_llm", ""))
+    if provider != "ollama":
+        return {"provider": provider, "required": False, "available": None, "model": model}
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        models = [item.get("name") for item in payload.get("models", [])]
+        return {
+            "provider": provider,
+            "required": True,
+            "available": model in models,
+            "model": model,
+            "installed_models": models,
+        }
+    except Exception as exc:
+        return {
+            "provider": provider,
+            "required": True,
+            "available": False,
+            "model": model,
+            "error": str(exc),
+        }
 
 
 class AutopilotService:
@@ -128,6 +168,8 @@ class AutopilotService:
             "mode": "paper_autopilot",
             "paper_trading_enabled": bool(config.get("paper_trading_enabled")),
             "scanner_sources": len(config.get("scanner_rss_sources", [])),
+            "llm_routing": config.get("llm_routing", {}),
+            "local_llm": local_llm_status(config.get("llm_routing", {})),
             "latest_job": latest,
             "readiness": {
                 "status": readiness["status"],

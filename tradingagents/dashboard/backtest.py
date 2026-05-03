@@ -73,6 +73,16 @@ class BacktestConfig:
     shallow_thinker: str = "gpt-5.4-mini"
     deep_thinker: str = "gpt-5.4"
     backend_url: Optional[str] = None
+    quick_llm_provider: str = "ollama"
+    quick_backend_url: Optional[str] = "http://localhost:11434/v1"
+    quick_fallback_llm_provider: Optional[str] = "openai"
+    quick_fallback_thinker: Optional[str] = "gpt-5.4-mini"
+    quick_fallback_backend_url: Optional[str] = None
+    deep_llm_provider: str = "openai"
+    deep_backend_url: Optional[str] = None
+    critical_llm_provider: str = "openai"
+    critical_thinker: str = "gpt-5.4"
+    critical_backend_url: Optional[str] = None
     output_language: str = "English"
     openai_reasoning_effort: Optional[str] = None
 
@@ -113,6 +123,16 @@ class BacktestRequest(BaseModel):
     shallow_thinker: str = "gpt-5.4-mini"
     deep_thinker: str = "gpt-5.4"
     backend_url: Optional[str] = None
+    quick_llm_provider: str = "ollama"
+    quick_backend_url: Optional[str] = "http://localhost:11434/v1"
+    quick_fallback_llm_provider: Optional[str] = "openai"
+    quick_fallback_thinker: Optional[str] = "gpt-5.4-mini"
+    quick_fallback_backend_url: Optional[str] = None
+    deep_llm_provider: str = "openai"
+    deep_backend_url: Optional[str] = None
+    critical_llm_provider: str = "openai"
+    critical_thinker: str = "gpt-5.4"
+    critical_backend_url: Optional[str] = None
     output_language: str = "English"
     openai_reasoning_effort: Optional[str] = None
 
@@ -160,6 +180,16 @@ class BacktestRequest(BaseModel):
             shallow_thinker=self.shallow_thinker,
             deep_thinker=self.deep_thinker,
             backend_url=self.backend_url,
+            quick_llm_provider=self.quick_llm_provider,
+            quick_backend_url=self.quick_backend_url,
+            quick_fallback_llm_provider=self.quick_fallback_llm_provider,
+            quick_fallback_thinker=self.quick_fallback_thinker,
+            quick_fallback_backend_url=self.quick_fallback_backend_url,
+            deep_llm_provider=self.deep_llm_provider,
+            deep_backend_url=self.deep_backend_url,
+            critical_llm_provider=self.critical_llm_provider,
+            critical_thinker=self.critical_thinker,
+            critical_backend_url=self.critical_backend_url,
             output_language=self.output_language,
             openai_reasoning_effort=self.openai_reasoning_effort,
         )
@@ -261,6 +291,20 @@ class TradingAgentsDecisionProvider:
             graph_config["deep_think_llm"] = self.config.deep_thinker
             graph_config["backend_url"] = self.config.backend_url
             graph_config["llm_provider"] = self.config.llm_provider.lower()
+            graph_config["quick_llm_provider"] = self.config.quick_llm_provider.lower()
+            graph_config["quick_backend_url"] = self.config.quick_backend_url
+            graph_config["quick_fallback_llm_provider"] = (
+                self.config.quick_fallback_llm_provider.lower()
+                if self.config.quick_fallback_llm_provider
+                else None
+            )
+            graph_config["quick_fallback_think_llm"] = self.config.quick_fallback_thinker
+            graph_config["quick_fallback_backend_url"] = self.config.quick_fallback_backend_url
+            graph_config["deep_llm_provider"] = self.config.deep_llm_provider.lower()
+            graph_config["deep_backend_url"] = self.config.deep_backend_url
+            graph_config["critical_llm_provider"] = self.config.critical_llm_provider.lower()
+            graph_config["critical_think_llm"] = self.config.critical_thinker
+            graph_config["critical_backend_url"] = self.config.critical_backend_url
             graph_config["openai_reasoning_effort"] = self.config.openai_reasoning_effort
             graph_config["output_language"] = self.config.output_language
             graph_config["checkpoint_enabled"] = False

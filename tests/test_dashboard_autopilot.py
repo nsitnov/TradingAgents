@@ -1,5 +1,6 @@
 from tradingagents.dashboard.autopilot import (
     AutopilotService,
+    local_llm_status,
     load_autopilot_config,
     normalize_autopilot_config,
     save_autopilot_config,
@@ -69,6 +70,14 @@ def test_autopilot_config_roundtrip(tmp_path):
     assert saved["z_threshold"] == 2.0
     assert load_autopilot_config(path)["enabled"] is True
     assert normalize_autopilot_config({})["paper_trading_enabled"] is True
+    assert normalize_autopilot_config({})["llm_routing"]["quick_llm_provider"] == "ollama"
+
+
+def test_local_llm_status_reports_non_local_provider():
+    status = local_llm_status({"quick_llm_provider": "openai", "quick_think_llm": "gpt-5.4"})
+
+    assert status["required"] is False
+    assert status["provider"] == "openai"
 
 
 def test_autopilot_run_once_orchestrates_scanner_confluence_and_execution(tmp_path):

@@ -15,6 +15,18 @@ DEFAULT_CONFIG = {
     "llm_provider": "openai",
     "deep_think_llm": "gpt-5.4",
     "quick_think_llm": "gpt-5.4-mini",
+    # Optional multi-LLM routing. Quick roles can use a local Ollama model,
+    # while critical decisions stay on OpenAI.
+    "quick_llm_provider": "ollama",
+    "quick_backend_url": "http://localhost:11434/v1",
+    "quick_fallback_llm_provider": "openai",
+    "quick_fallback_think_llm": "gpt-5.4-mini",
+    "quick_fallback_backend_url": None,
+    "deep_llm_provider": "openai",
+    "deep_backend_url": None,
+    "critical_llm_provider": "openai",
+    "critical_think_llm": "gpt-5.4",
+    "critical_backend_url": None,
     # When None, each provider's client falls back to its own default endpoint
     # (api.openai.com for OpenAI, generativelanguage.googleapis.com for Gemini, ...).
     # The CLI overrides this per provider when the user picks one. Keeping a

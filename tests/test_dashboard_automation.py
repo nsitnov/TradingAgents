@@ -34,3 +34,12 @@ def test_automation_config_requires_admin_key_by_default():
     config = normalize_automation_config({})
 
     assert config["require_openai_admin_key"] is True
+
+
+def test_automation_defaults_to_balanced_llm_routing():
+    config = normalize_automation_config({})
+    run_request = config["run_request"]
+
+    assert run_request["quick_llm_provider"] == "ollama"
+    assert run_request["quick_fallback_llm_provider"] == "openai"
+    assert run_request["critical_llm_provider"] == "openai"

@@ -32,6 +32,16 @@ DEFAULT_AUTOMATION_CONFIG = {
         "llm_provider": "openai",
         "shallow_thinker": "gpt-5.4-mini",
         "deep_thinker": "gpt-5.4",
+        "quick_llm_provider": "ollama",
+        "quick_backend_url": "http://localhost:11434/v1",
+        "quick_fallback_llm_provider": "openai",
+        "quick_fallback_thinker": "gpt-5.4-mini",
+        "quick_fallback_backend_url": None,
+        "deep_llm_provider": "openai",
+        "deep_backend_url": None,
+        "critical_llm_provider": "openai",
+        "critical_thinker": "gpt-5.4",
+        "critical_backend_url": None,
         "output_language": "English",
     },
 }
@@ -120,9 +130,16 @@ def run_daily_once(
     skipped: List[str] = []
 
     try:
-        provider = str(config.get("run_request", {}).get("llm_provider", "")).lower()
+        run_request = config.get("run_request", {})
+        providers = {
+            str(run_request.get("llm_provider", "")).lower(),
+            str(run_request.get("quick_llm_provider", "")).lower(),
+            str(run_request.get("quick_fallback_llm_provider", "")).lower(),
+            str(run_request.get("deep_llm_provider", "")).lower(),
+            str(run_request.get("critical_llm_provider", "")).lower(),
+        }
         if (
-            provider == "openai"
+            "openai" in providers
             and config.get("require_openai_admin_key", True)
             and not os.getenv("OPENAI_ADMIN_KEY")
         ):
