@@ -187,15 +187,19 @@ def audit_events(limit: int = Query(default=100, ge=1, le=500)):
 
 @app.get("/api/broker/config")
 def broker_config():
-    return broker_config_from_env()
+    config = broker_config_from_env()
+    config["execution_enabled"] = False
+    config["execution_note"] = "Broker execution is disabled; platform is paper-ledger only."
+    return config
 
 
 @app.get("/api/broker/positions")
 def broker_positions():
     try:
-        broker = broker_from_env()
-        if not broker:
+        config = broker_config_from_env()
+        if config["broker"] != "alpaca_paper":
             return {"broker": "paper_ledger", "positions": []}
+        broker = broker_from_env()
         return {"broker": broker.name, "positions": broker.get_positions()}
     except BrokerError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -207,9 +211,10 @@ def broker_orders(
     limit: int = Query(default=100, ge=1, le=500),
 ):
     try:
-        broker = broker_from_env()
-        if not broker:
+        config = broker_config_from_env()
+        if config["broker"] != "alpaca_paper":
             return {"broker": "paper_ledger", "orders": []}
+        broker = broker_from_env()
         return {"broker": broker.name, "orders": broker.get_orders(status=status, limit=limit)}
     except BrokerError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

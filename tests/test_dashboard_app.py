@@ -39,6 +39,8 @@ def test_order_risk_and_audit_endpoints_are_available(monkeypatch):
     }
     assert "risk_decisions" in client.get("/api/risk/decisions").json()
     assert "audit_events" in client.get("/api/audit/events").json()
-    assert client.get("/api/broker/config").json()["broker"]
+    broker_config = client.get("/api/broker/config").json()
+    assert broker_config["broker"]
+    assert broker_config["execution_enabled"] is False
     assert "positions" in client.get("/api/broker/positions").json()
     assert "orders" in client.get("/api/broker/orders").json()

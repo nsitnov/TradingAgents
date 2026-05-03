@@ -535,6 +535,16 @@
                 <div className="metric"><span>Market Value</span><strong>{money(portfolio?.market_value)}</strong></div>
                 <div className="metric"><span>Max Drawdown</span><strong className="neg">{((performance.max_drawdown || 0) * 100).toFixed(2)}%</strong></div>
               </div>
+              <div className="grid-3">
+                <div className="metric"><span>Total Return</span><strong className={(performance.total_pnl || 0) >= 0 ? "pos" : "neg"}>{((performance.total_return_pct || 0) * 100).toFixed(2)}%</strong></div>
+                <div className="metric"><span>Win Rate</span><strong>{((performance.win_rate || 0) * 100).toFixed(1)}%</strong></div>
+                <div className="metric"><span>Profit Factor</span><strong>{performance.profit_factor == null ? "--" : number(performance.profit_factor)}</strong></div>
+              </div>
+              <div className="grid-3">
+                <div className="metric"><span>Closed Trades</span><strong>{performance.closed_trade_count || 0}</strong></div>
+                <div className="metric"><span>Avg Closed P&L</span><strong className={(performance.average_closed_trade_pnl || 0) >= 0 ? "pos" : "neg"}>{money(performance.average_closed_trade_pnl)}</strong></div>
+                <div className="metric"><span>Sharpe-like</span><strong>{number(performance.sharpe_like || 0)}</strong></div>
+              </div>
               <section className="panel">
                 <h2>Equity Curve</h2>
                 <div className="chart">

@@ -11,10 +11,11 @@
 Този roadmap е реалистичен, но първоначалната версия поставяше real-time инфраструктурата твърде рано. В текущия fork вече има dashboard, SQLite history, paper ledger, daily automation, weekly Resend report и Git upstream sync. Затова правилният първи production slice е:
 
 1. **Paper OMS + deterministic risk gates + audit log**
-2. **Alpaca paper adapter върху същия OMS interface**
-3. **Cross-market scanner MVP без trading**
+2. **Paper performance analytics**, за да мерим дали стратегията печели виртуално
+3. **Cross-market scanner MVP без broker trading**
 4. **Paper trading на scanner signals**
-5. **Едва тогава Redis/Timescale/NATS и live capital**
+5. **Broker adapters остават read/test-only до изрично решение за paper account**
+6. **Едва тогава Redis/Timescale/NATS и live capital**
 
 Правило: **няма LIVE trading преди hard risk gates, audit trail, paper reconciliation, manual approval mode и поне 1 месец стабилен paper режим.**
 
@@ -33,9 +34,9 @@
 | Upstream sync | Готов | Fork + weekly upstream PR workflow |
 | Docker | Готов | Single-shot run |
 | Backtesting | Минимално | Date-fidelity, но няма walk-forward, Monte Carlo, transaction cost модел |
-| **Execution / OMS** | **Липсва** | Това е най-голямата дупка |
+| **Execution / OMS** | **Paper-ready** | Local PaperLedger execution, orders/fills/risk/audit |
 | **Real-time streaming** | **Липсва** | Single-shot `propagate()` |
-| **Risk gates** (kill switch, DD, exposure) | **Липсва** | Само LLM "risk team" — не е hard limit |
+| **Risk gates** (kill switch, DD, exposure) | **Базово готово** | deterministic max notional/position/trades/loss/forbidden tickers |
 | **Crypto** | **Липсва** | Само US stocks |
 | **Cross-market scanner** | **Липсва** | Това е твоят въпрос — виж секция 6 |
 
@@ -340,8 +341,8 @@ Mode се сменя само от UI с конфирмация + 2FA. Логв�
 
 1. **Веднага днес**: Commit-ни този roadmap в repo-то, защото в момента е жив документ извън Git history.
 2. **Тази седмица**: Имплементирай Paper OMS + hard risk gates + audit trail върху текущия dashboard/SQLite stack.
-3. **След това**: Регистрирай Alpaca paper account и Polygon.io free tier — 0 пари, 0 риск.
-4. **Следваща седмица**: Дефинирай `BrokerAdapter` interface и имплементирай `AlpacaBroker.submit_order()` + `get_positions()` като втори adapter след `PaperBroker`. **Статус: базовият Alpaca paper adapter е добавен; остава реална account конфигурация и reconciliation worker.**
+3. **След това**: Мери virtual performance: total return, max DD, win rate, profit factor, average closed trade P&L.
+4. **По-късно**: Alpaca paper остава read/test adapter; не го включвай в execution, докато не решим да тестваме broker paper account.
 5. **Седмица 3**: Започни cross-market ingest — RSS/API + translation + entity extraction, но без trading.
 
 ---

@@ -213,6 +213,11 @@ Dashboard tab `Paper Portfolio` показва:
 - realized P&L
 - unrealized P&L
 - total P&L
+- total return
+- win rate
+- profit factor
+- average closed trade P&L
+- Sharpe-like score over stored equity snapshots
 - equity curve
 - max drawdown
 - позиции по тикер
@@ -247,13 +252,13 @@ Broker env променливи:
 
 ```bash
 TRADINGAGENTS_BROKER=paper_ledger     # default local PaperLedger execution
-TRADINGAGENTS_BROKER=alpaca_paper     # Alpaca paper API, no real-money path
+# TRADINGAGENTS_BROKER=alpaca_paper   # read/test adapter only; not wired into execution
 ALPACA_API_KEY_ID=...
 ALPACA_API_SECRET_KEY=...
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
 ```
 
-`alpaca_paper` използва Alpaca paper Trading API за market/day buy/sell orders и не е enabled по подразбиране.
+Засега execution path-ът е заключен към local PaperLedger. Alpaca adapter-ът може да чете paper positions/orders за бъдеща интеграция, но OMS не изпраща broker orders.
 
 SQLite вече пази:
 

@@ -18,6 +18,7 @@ from cli.main import classify_message_type
 from cli.stats_handler import StatsCallbackHandler
 from tradingagents.dashboard.ledger import PaperLedger
 from tradingagents.dashboard.oms import OrderIntent, PaperOrderService
+from tradingagents.dashboard.performance import portfolio_performance
 from tradingagents.dashboard.storage import DashboardStorage
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.checkpointer import clear_checkpoint, get_checkpointer, thread_id
@@ -663,27 +664,12 @@ class RunStore:
             run.lock_file = None
 
     def _portfolio_performance(self, history: List[Dict[str, Any]]) -> Dict[str, Any]:
-        if not history:
-            snapshot = self.ledger.snapshot()
-            return {
-                "start_equity": snapshot.get("initial_cash", 0.0),
-                "end_equity": snapshot.get("equity", 0.0),
-                "total_pnl": snapshot.get("total_pnl", 0.0),
-                "max_drawdown": 0.0,
-            }
-        equities = [float(item["equity"]) for item in history]
-        peak = equities[0]
-        max_drawdown = 0.0
-        for equity in equities:
-            peak = max(peak, equity)
-            if peak:
-                max_drawdown = min(max_drawdown, (equity - peak) / peak)
-        return {
-            "start_equity": equities[0],
-            "end_equity": equities[-1],
-            "total_pnl": equities[-1] - equities[0],
-            "max_drawdown": max_drawdown,
-        }
+        snapshot = self.ledger.snapshot()
+        return portfolio_performance(
+            history,
+            self.storage.trades(limit=5000),
+            float(snapshot.get("initial_cash", 0.0)),
+        )
 
 
 def encode_sse(event: Dict[str, Any]) -> str:
